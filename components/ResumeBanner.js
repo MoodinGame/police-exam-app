@@ -29,7 +29,7 @@ export default function ResumeBanner() {
   const answered = Object.keys(session.answers || {}).length;
   const href =
     session.kind === 'mock'
-      ? `/mock-exam/${session.setId}`
+      ? `/mock-exam/${session.examId || session.setId}`
       : `/exam/${session.subjectId}${session.topicId ? `?topic=${session.topicId}` : ''}`;
 
   return (
