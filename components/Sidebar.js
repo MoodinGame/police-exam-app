@@ -11,11 +11,13 @@ import {
   Trophy,
   Megaphone,
   User,
+  BarChart3,
 } from 'lucide-react';
 
 const navItems = [
   { href: '/dashboard', label: 'แดชบอร์ด', icon: LayoutDashboard },
   { href: '/practice', label: 'แบบฝึกหัดรายวิชา', icon: BookOpen },
+  { href: '/profile', label: 'สถิติของฉัน', icon: BarChart3 },
   { href: '/mock-exam', label: 'ข้อสอบเสมือนจริง', icon: ClipboardList },
   { href: '/flashcards', label: 'แฟลชการ์ด', icon: Layers },
   { href: '/calendar', label: 'ปฏิทิน', icon: Calendar },

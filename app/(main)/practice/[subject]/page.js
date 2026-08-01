@@ -1,68 +1,100 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, CheckCircle2, Lock } from 'lucide-react';
+import { ArrowLeft, Search, Check, Lock, X } from 'lucide-react';
 import { subjects } from '@/lib/subjects';
 import { topicsBySubject } from '@/lib/topics';
 import { subjectStyles } from '@/lib/subjectStyles';
 import { getTopicProgress } from '@/lib/progress';
 
-function TopicRow({ topic }) {
-  const [attempt, setAttempt] = useState(null);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setAttempt(getTopicProgress(topic.id));
-    setMounted(true);
-  }, [topic.id]);
+const PASS_PCT = 60; // เกณฑ์ผ่านของแบบฝึกหัดรายชุด
 
-  if (!topic.available) {
-    return (
-      <div className="flex items-center justify-between gap-4 border border-graylight/20 rounded-2xl p-5 opacity-60">
-        <div>
-          <p className="font-medium text-graydark">{topic.name}</p>
-          <p className="text-sm text-graydark/50 mt-0.5">{topic.description}</p>
-        </div>
-        <span className="flex items-center gap-1.5 text-xs text-graydark/40 shrink-0">
-          <Lock size={13} />
-          เร็วๆ นี้
-        </span>
-      </div>
-    );
-  }
-
-  const done = mounted && attempt;
+function SetCard({ topic, subject, attempt }) {
+  const style = subjectStyles[topic.subjectId];
+  const pct = attempt ? Math.round((attempt.score / attempt.total) * 100) : null;
+  const passed = pct !== null && pct >= PASS_PCT;
 
   return (
-    <Link
-      href={`/exam/${topic.subjectId}?topic=${topic.id}`}
-      className="flex items-center justify-between gap-4 border border-graylight/30 rounded-2xl p-5 hover:shadow-md hover:border-accent-cyan/50 transition-all"
-    >
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="font-medium text-graydark">{topic.name}</p>
-          {done && <CheckCircle2 size={15} className="text-accent-green shrink-0" />}
+    <div className="border border-graylight/30 rounded-2xl overflow-hidden flex flex-col hover:shadow-md hover:border-accent-cyan/50 transition-all">
+      {attempt ? (
+        <div
+          className={`flex items-center justify-between gap-2 px-4 py-2 text-xs font-medium text-white ${
+            passed ? 'bg-emerald-600' : 'bg-orange-500'
+          }`}
+        >
+          <span className="flex items-center gap-1.5">
+            <Check size={13} />
+            เคยทำแล้ว
+          </span>
+          <span>
+            {attempt.score}/{attempt.total} · {passed ? 'ผ่าน' : 'ไม่ผ่าน'}
+          </span>
         </div>
-        <p className="text-sm text-graydark/50 mt-0.5">{topic.description}</p>
-        {done && (
-          <p className="text-xs text-accent-green mt-1.5">
-            ทำแล้ว {attempt.score}/{attempt.total} ข้อ
-          </p>
-        )}
+      ) : (
+        <div className="h-[33px] bg-graylight/10 border-b border-graylight/20" />
+      )}
+
+      <div className="p-5 flex-1 flex flex-col">
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${style.chip}`}>
+            {style.short}
+          </span>
+          {!topic.available && (
+            <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-graylight/20 text-graydark/50">
+              <Lock size={9} />
+              เร็วๆ นี้
+            </span>
+          )}
+        </div>
+
+        <h3 className="font-medium text-graydark leading-snug mb-1">{topic.name}</h3>
+        <p className="text-xs text-graydark/50 mb-2 leading-relaxed">{topic.description}</p>
+        <p className="text-xs text-graydark/40 mb-4">{topic.questionCount} ข้อ</p>
+
+        <div className="mt-auto">
+          {topic.available ? (
+            <Link
+              href={`/exam/${topic.subjectId}?topic=${topic.id}`}
+              className="block text-center text-sm bg-navy text-white rounded-xl py-2.5 font-medium hover:opacity-90"
+            >
+              {attempt ? 'ทำอีกครั้ง' : 'ทำข้อสอบ'}
+            </Link>
+          ) : (
+            <span className="block text-center text-sm bg-graylight/20 text-graydark/40 rounded-xl py-2.5 font-medium cursor-not-allowed">
+              ยังไม่เปิดให้ทำ
+            </span>
+          )}
+        </div>
       </div>
-      <span className="text-xs font-medium px-3 py-1.5 rounded-full bg-navy/5 text-navy shrink-0">
-        {topic.questionCount} ข้อ
-      </span>
-    </Link>
+    </div>
   );
 }
 
 export default function SubjectTopicsPage() {
   const { subject: subjectId } = useParams();
   const subject = subjects.find((s) => s.id === subjectId);
-  const subjectTopics = topicsBySubject(subjectId);
+  const subjectTopics = useMemo(() => topicsBySubject(subjectId), [subjectId]);
   const style = subjectStyles[subjectId];
+
+  const [query, setQuery] = useState('');
+  const [progress, setProgress] = useState(null);
+
+  // อ่าน localStorage หลัง mount เท่านั้น เพื่อไม่ให้ markup ตอน SSR กับตอน hydrate ต่างกัน
+  useEffect(() => {
+    const map = {};
+    for (const t of subjectTopics) map[t.id] = getTopicProgress(t.id);
+    setProgress(map);
+  }, [subjectTopics]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return subjectTopics;
+    return subjectTopics.filter((t) =>
+      `${t.name} ${t.description}`.toLowerCase().includes(q)
+    );
+  }, [subjectTopics, query]);
 
   if (!subject) {
     return (
@@ -76,6 +108,10 @@ export default function SubjectTopicsPage() {
   }
 
   const Icon = style.icon;
+  const attemptedCount = progress ? subjectTopics.filter((t) => progress[t.id]).length : 0;
+  const overallPct = subjectTopics.length
+    ? Math.round((attemptedCount / subjectTopics.length) * 100)
+    : 0;
 
   return (
     <div>
@@ -87,23 +123,82 @@ export default function SubjectTopicsPage() {
         กลับไปเลือกวิชา
       </Link>
 
-      <div className={`rounded-2xl p-6 text-white mb-8 ${style.color}`}>
-        <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center mb-4">
-          <Icon size={20} />
+      <div className="flex items-start justify-between gap-6 flex-wrap mb-6">
+        <div className={`rounded-2xl p-6 text-white flex-1 min-w-[280px] ${style.color}`}>
+          <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center mb-4">
+            <Icon size={20} />
+          </div>
+          <h1 className="text-xl font-semibold mb-1">{subject.name}</h1>
+          <p className="text-sm text-white/75">{subject.description}</p>
         </div>
-        <h1 className="text-xl font-semibold mb-1">{subject.name}</h1>
-        <p className="text-sm text-white/75">{subject.description}</p>
+
+        <div className="border border-graylight/30 rounded-2xl p-5 min-w-[240px]">
+          <p className="text-xs text-graydark/50 mb-2">ความก้าวหน้าวิชานี้</p>
+          <div className="flex items-center gap-3 mb-3">
+            <p className="text-3xl font-bold text-navy">{progress ? `${overallPct}%` : '—'}</p>
+            <Link
+              href="/profile"
+              className="text-xs font-medium px-3 py-1.5 rounded-full bg-accent-cyan/10 text-accent-cyan hover:bg-accent-cyan/20"
+            >
+              ดูรายงานผล
+            </Link>
+          </div>
+          <div className="h-1.5 bg-graylight/20 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-accent-cyan transition-all"
+              style={{ width: `${progress ? overallPct : 0}%` }}
+            />
+          </div>
+          <p className="text-[11px] text-graydark/40 mt-2">
+            ทำแล้ว {attemptedCount} จาก {subjectTopics.length} ชุด
+          </p>
+        </div>
       </div>
 
-      <p className="text-sm text-graydark/60 mb-4">
-        เลือกหัวข้อย่อยที่ต้องการฝึก — ทำแล้วจะมีเครื่องหมาย ✓ กำกับไว้ให้เห็นชัดว่าอ่านอะไรไปบ้างแล้ว
-      </p>
-
-      <div className="space-y-3">
-        {subjectTopics.map((t) => (
-          <TopicRow key={t.id} topic={t} />
-        ))}
+      <div className="relative mb-6">
+        <Search
+          size={16}
+          className="absolute left-4 top-1/2 -translate-y-1/2 text-graydark/40 pointer-events-none"
+        />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={`ค้นหาชุดข้อสอบในวิชา${subject.name}...`}
+          className="w-full border border-graylight/30 rounded-xl pl-11 pr-10 py-3 text-sm text-graydark placeholder:text-graydark/40 focus:outline-none focus:border-accent-cyan"
+        />
+        {query && (
+          <button
+            onClick={() => setQuery('')}
+            aria-label="ล้างคำค้นหา"
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-graydark/40 hover:text-navy"
+          >
+            <X size={15} />
+          </button>
+        )}
       </div>
+
+      <h2 className="font-semibold text-navy mb-4">
+        ชุดข้อสอบ{' '}
+        <span className="text-sm font-normal text-graydark/40">({filtered.length} ชุด)</span>
+      </h2>
+
+      {filtered.length === 0 ? (
+        <div className="border border-dashed border-graylight/40 rounded-2xl p-12 text-center">
+          <p className="text-graydark/50 mb-1">ไม่พบชุดข้อสอบที่ตรงกับการค้นหา</p>
+          <p className="text-sm text-graydark/40">ลองเปลี่ยนคำค้นหาดูอีกครั้ง</p>
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((t) => (
+            <SetCard
+              key={t.id}
+              topic={t}
+              subject={subject}
+              attempt={progress?.[t.id] ?? null}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
