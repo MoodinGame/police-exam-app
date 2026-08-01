@@ -94,12 +94,14 @@ export default function PracticeFilter({ value, onChange, scopeSubjectId = null 
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`relative flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition-colors ${
+        aria-label="ตัวกรอง"
+        className={`relative flex items-center justify-center gap-2 rounded-xl px-4 sm:px-5 py-3 text-sm font-medium transition-colors ${
           open ? 'bg-navy/90 text-white' : 'bg-navy text-white hover:opacity-90'
         }`}
       >
         <SlidersHorizontal size={16} />
-        ตัวกรอง
+        {/* จอเล็กเหลือแค่ไอคอน เพื่อไม่ให้ช่องค้นหาแคบเกินไป */}
+        <span className="hidden sm:inline">ตัวกรอง</span>
         {activeCount > 0 && (
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-orange-400 ring-2 ring-white" />
         )}

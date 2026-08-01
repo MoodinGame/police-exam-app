@@ -80,9 +80,9 @@ export default function ExamPage() {
 
   if (phase === 'result') {
     return (
-      <div className="min-h-screen bg-white px-6 py-10">
+      <div className="min-h-screen bg-white px-4 sm:px-6 py-6 sm:py-10">
         <div className="max-w-3xl mx-auto">
-          <div className="bg-navy text-white rounded-2xl p-8 text-center mb-8">
+          <div className="bg-navy text-white rounded-2xl p-6 sm:p-8 text-center mb-8">
             <p className="text-graylight mb-1">ผลคะแนน · {topic ? topic.name : subject.name}</p>
             <p className="text-5xl font-bold mb-1">
               {score}
@@ -165,12 +165,19 @@ export default function ExamPage() {
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <header className="border-b border-graylight/30 px-6 py-4 flex items-center justify-between">
-        <Link href="/practice" className="flex items-center gap-1.5 text-graydark/60 hover:text-navy text-sm">
-          <ArrowLeft size={16} /> ออกจากการทำข้อสอบ
+      <header className="border-b border-graylight/30 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
+        <Link
+          href="/practice"
+          className="flex items-center gap-1.5 text-graydark/60 hover:text-navy text-sm shrink-0"
+        >
+          <ArrowLeft size={16} />
+          {/* จอเล็กเหลือแค่ลูกศร ไม่งั้นหัวข้อกับเวลาจะถูกบีบจนอ่านไม่ออก */}
+          <span className="hidden sm:inline">ออกจากการทำข้อสอบ</span>
         </Link>
-        <p className="font-medium text-navy">{topic ? topic.name : subject.name}</p>
-        <div className="flex items-center gap-1.5 text-navy font-medium">
+        <p className="font-medium text-navy text-sm sm:text-base truncate min-w-0">
+          {topic ? topic.name : subject.name}
+        </p>
+        <div className="flex items-center gap-1.5 text-navy font-medium shrink-0 tabular-nums">
           <Clock size={16} />
           {formatTime(secondsLeft)}
         </div>
@@ -183,7 +190,7 @@ export default function ExamPage() {
         />
       </div>
 
-      <main className="flex-1 max-w-2xl mx-auto w-full px-6 py-10">
+      <main className="flex-1 max-w-2xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-10">
         <p className="text-sm text-graydark/50 mb-2">
           ข้อ {current + 1} / {subjectQuestions.length}
         </p>
