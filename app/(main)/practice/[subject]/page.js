@@ -8,6 +8,7 @@ import { subjects } from '@/lib/subjects';
 import { topicsBySubject } from '@/lib/topics';
 import { subjectStyles } from '@/lib/subjectStyles';
 import { getTopicProgress } from '@/lib/progress';
+import PracticeFilter, { EMPTY_FILTER } from '@/components/PracticeFilter';
 
 const PASS_PCT = 60; // เกณฑ์ผ่านของแบบฝึกหัดรายชุด
 
@@ -79,6 +80,7 @@ export default function SubjectTopicsPage() {
   const style = subjectStyles[subjectId];
 
   const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState(EMPTY_FILTER);
   const [progress, setProgress] = useState(null);
 
   // อ่าน localStorage หลัง mount เท่านั้น เพื่อไม่ให้ markup ตอน SSR กับตอน hydrate ต่างกัน
@@ -88,13 +90,27 @@ export default function SubjectTopicsPage() {
     setProgress(map);
   }, [subjectTopics]);
 
+  // เปลี่ยนวิชา = ล้างตัวกรองเดิม ไม่งั้นจะเหลือหมวดย่อยของวิชาก่อนหน้าค้างอยู่
+  useEffect(() => {
+    setFilter(EMPTY_FILTER);
+    setQuery('');
+  }, [subjectId]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return subjectTopics;
-    return subjectTopics.filter((t) =>
-      `${t.name} ${t.description}`.toLowerCase().includes(q)
-    );
-  }, [subjectTopics, query]);
+    return subjectTopics.filter((t) => {
+      if (filter.topics.length > 0 && !filter.topics.includes(t.id)) return false;
+
+      if (progress && filter.status !== 'all') {
+        const done = Boolean(progress[t.id]);
+        if (filter.status === 'done' && !done) return false;
+        if (filter.status === 'undone' && done) return false;
+      }
+
+      if (q && !`${t.name} ${t.description}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [subjectTopics, query, filter, progress]);
 
   if (!subject) {
     return (
@@ -155,32 +171,50 @@ export default function SubjectTopicsPage() {
         </div>
       </div>
 
-      <div className="relative mb-6">
-        <Search
-          size={16}
-          className="absolute left-4 top-1/2 -translate-y-1/2 text-graydark/40 pointer-events-none"
-        />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={`ค้นหาชุดข้อสอบในวิชา${subject.name}...`}
-          className="w-full border border-graylight/30 rounded-xl pl-11 pr-10 py-3 text-sm text-graydark placeholder:text-graydark/40 focus:outline-none focus:border-accent-cyan"
-        />
-        {query && (
+      <div className="flex items-stretch gap-3 mb-6">
+        <div className="relative flex-1">
+          <Search
+            size={16}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-graydark/40 pointer-events-none"
+          />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={`ค้นหาชุดข้อสอบในวิชา${subject.name}...`}
+            className="w-full h-full border border-graylight/30 rounded-xl pl-11 pr-10 py-3 text-sm text-graydark placeholder:text-graydark/40 focus:outline-none focus:border-accent-cyan"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery('')}
+              aria-label="ล้างคำค้นหา"
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-graydark/40 hover:text-navy"
+            >
+              <X size={15} />
+            </button>
+          )}
+        </div>
+
+        <PracticeFilter value={filter} onChange={setFilter} scopeSubjectId={subjectId} />
+      </div>
+
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <h2 className="font-semibold text-navy">
+          ชุดข้อสอบ{' '}
+          <span className="text-sm font-normal text-graydark/40">({filtered.length} ชุด)</span>
+        </h2>
+        {(filter.topics.length > 0 || filter.status !== 'all' || query.trim() !== '') && (
           <button
-            onClick={() => setQuery('')}
-            aria-label="ล้างคำค้นหา"
-            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-graydark/40 hover:text-navy"
+            onClick={() => {
+              setFilter(EMPTY_FILTER);
+              setQuery('');
+            }}
+            className="flex items-center gap-1 text-xs text-graydark/50 hover:text-navy"
           >
-            <X size={15} />
+            <X size={13} />
+            ล้างตัวกรอง
           </button>
         )}
       </div>
-
-      <h2 className="font-semibold text-navy mb-4">
-        ชุดข้อสอบ{' '}
-        <span className="text-sm font-normal text-graydark/40">({filtered.length} ชุด)</span>
-      </h2>
 
       {filtered.length === 0 ? (
         <div className="border border-dashed border-graylight/40 rounded-2xl p-12 text-center">

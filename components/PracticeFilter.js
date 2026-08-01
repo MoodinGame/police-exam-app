@@ -35,7 +35,11 @@ function Checkbox({ checked, label, onChange }) {
   );
 }
 
-export default function PracticeFilter({ value, onChange }) {
+/**
+ * scopeSubjectId: ถ้าส่งมา แผงจะล็อกอยู่ในวิชานั้นวิชาเดียว
+ * (ซ่อนคอลัมน์ "วิชา" และแสดงหมวดย่อยของวิชานั้นทันทีโดยไม่ต้องเลือกวิชาก่อน)
+ */
+export default function PracticeFilter({ value, onChange, scopeSubjectId = null }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const boxRef = useRef(null);
@@ -78,8 +82,11 @@ export default function PracticeFilter({ value, onChange }) {
     }));
   }
 
-  // หมวดย่อยจะโผล่เมื่อเลือกวิชาแล้วเท่านั้น (ถ้ายังไม่เลือกวิชา รายการจะยาวเกินไป)
-  const subTopics = topics.filter((t) => draft.subjects.includes(t.subjectId));
+  // ในหน้ารายวิชา หมวดย่อยคือชุดของวิชานั้นเลย
+  // ส่วนหน้ารวม หมวดย่อยจะโผล่เมื่อเลือกวิชาแล้วเท่านั้น (ไม่งั้นรายการจะยาวเกินไป)
+  const subTopics = scopeSubjectId
+    ? topics.filter((t) => t.subjectId === scopeSubjectId)
+    : topics.filter((t) => draft.subjects.includes(t.subjectId));
   const allSubjectsChecked = draft.subjects.length === 0;
 
   return (
@@ -125,22 +132,26 @@ export default function PracticeFilter({ value, onChange }) {
 
             {/* วิชา + สถานะ */}
             <div className={`p-5 ${subTopics.length === 0 ? 'sm:col-span-2' : ''}`}>
-              <p className="text-xs text-graydark/50 mb-3">วิชา</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 mb-5">
-                <Checkbox
-                  checked={allSubjectsChecked}
-                  label="ทั้งหมด"
-                  onChange={() => setDraft((d) => ({ ...d, subjects: [], topics: [] }))}
-                />
-                {subjects.map((s) => (
-                  <Checkbox
-                    key={s.id}
-                    checked={draft.subjects.includes(s.id)}
-                    label={subjectStyles[s.id].short}
-                    onChange={() => toggleSubject(s.id)}
-                  />
-                ))}
-              </div>
+              {!scopeSubjectId && (
+                <>
+                  <p className="text-xs text-graydark/50 mb-3">วิชา</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 mb-5">
+                    <Checkbox
+                      checked={allSubjectsChecked}
+                      label="ทั้งหมด"
+                      onChange={() => setDraft((d) => ({ ...d, subjects: [], topics: [] }))}
+                    />
+                    {subjects.map((s) => (
+                      <Checkbox
+                        key={s.id}
+                        checked={draft.subjects.includes(s.id)}
+                        label={subjectStyles[s.id].short}
+                        onChange={() => toggleSubject(s.id)}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
 
               <p className="text-xs text-graydark/50 mb-2">สถานะ</p>
               <div className="flex gap-2 flex-wrap">
