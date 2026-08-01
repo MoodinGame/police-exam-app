@@ -29,6 +29,7 @@ function profileForResponse(user) {
     username: user.username || '',
     email: user.email || '',
     phone: user.phone,
+    role: user.role || 'student',
   };
 }
 
@@ -38,7 +39,7 @@ export async function GET() {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from('app_users')
-      .select('username, email, phone')
+      .select('username, email, phone, role')
       .eq('id', currentUser.id)
       .single();
 
@@ -58,7 +59,7 @@ export async function PATCH(request) {
       .from('app_users')
       .update(profile)
       .eq('id', currentUser.id)
-      .select('username, email, phone')
+      .select('username, email, phone, role')
       .single();
 
     if (error?.code === '23505') {
