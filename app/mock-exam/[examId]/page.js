@@ -106,9 +106,11 @@ export default function MockExamTakingPage() {
       score,
       total: questions.length,
       passed: score >= exam.passScore,
+      answers,
+      durationSeconds: Math.max(0, durationSeconds - secondsLeft),
     });
     clearSessionIf(sessionId);
-  }, [exam, phase, questions.length, score, sessionId]);
+  }, [answers, durationSeconds, exam, phase, questions.length, score, secondsLeft, sessionId]);
 
   if (!exam) {
     return <ExamMessage title="ไม่พบชุดข้อสอบ" message="ลิงก์นี้อาจไม่ถูกต้อง หรือชุดข้อสอบถูกปิดใช้งานแล้ว" />;

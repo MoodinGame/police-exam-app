@@ -19,6 +19,7 @@ module.exports = {
         accent: {
           cyan: '#00B4D8',
           green: '#4ADE80',
+          gold: '#D8B06B',
         },
       },
       fontFamily: {

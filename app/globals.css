@@ -3,5 +3,95 @@
 @tailwind utilities;
 
 body {
-  @apply bg-white text-graydark font-prompt;
+  @apply bg-[#f7f9fc] text-graydark font-prompt antialiased;
+}
+
+::selection {
+  background: rgba(0, 180, 216, 0.2);
+  color: #2B2D42;
+}
+
+@layer components {
+  .app-main {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 92% 4%, rgba(0, 180, 216, 0.11), transparent 21rem),
+      radial-gradient(circle at 8% 88%, rgba(216, 176, 107, 0.12), transparent 24rem),
+      linear-gradient(180deg, #fbfdff 0%, #f7f9fc 55%, #f8fbff 100%);
+  }
+
+  .app-main::before,
+  .app-main::after {
+    content: '';
+    position: absolute;
+    z-index: 0;
+    border-radius: 9999px;
+    filter: blur(4px);
+    pointer-events: none;
+  }
+
+  .app-main::before {
+    width: 18rem;
+    height: 18rem;
+    top: 22%;
+    right: -13rem;
+    background: rgba(0, 180, 216, 0.055);
+  }
+
+  .app-main::after {
+    width: 15rem;
+    height: 15rem;
+    bottom: 6%;
+    left: -11rem;
+    background: rgba(216, 176, 107, 0.07);
+  }
+
+  .app-card {
+    @apply rounded-2xl border border-graylight/25 bg-white/90 shadow-[0_12px_30px_rgba(43,45,66,0.07)] backdrop-blur-sm;
+  }
+
+  .app-card-hover {
+    @apply transition duration-300 ease-out hover:-translate-y-1 hover:border-accent-cyan/45 hover:shadow-[0_18px_42px_rgba(43,45,66,0.13)];
+  }
+
+  .app-section-heading {
+    @apply relative pl-3 before:absolute before:inset-y-1 before:left-0 before:w-1 before:rounded-full before:bg-gradient-to-b before:from-accent-cyan before:to-accent-gold;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-accent-cyan to-[#159fc7] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(0,180,216,0.24)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_22px_rgba(0,180,216,0.32)] active:translate-y-0;
+  }
+
+  .btn-navy {
+    @apply inline-flex items-center justify-center rounded-xl bg-navy px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(43,45,66,0.2)] transition duration-200 hover:-translate-y-0.5 hover:bg-navy/90 hover:shadow-[0_12px_22px_rgba(43,45,66,0.28)] active:translate-y-0;
+  }
+
+  .animate-enter {
+    animation: enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .animate-float {
+    animation: float 4.5s ease-in-out infinite;
+  }
+}
+
+@keyframes enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

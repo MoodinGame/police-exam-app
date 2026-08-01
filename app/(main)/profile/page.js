@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Flame, Trophy, CalendarDays, Target, ListChecks, BookA } from 'lucide-react';
+import { Flame, Trophy, CalendarDays, Target, ListChecks, BookA, Rocket, BookOpenCheck, Medal, Compass, LockKeyhole } from 'lucide-react';
 import { subjects } from '@/lib/subjects';
 import { topics } from '@/lib/topics';
 import { subjectStyles } from '@/lib/subjectStyles';
@@ -14,6 +14,8 @@ import {
   getTopicAccuracy,
   localDateKey,
 } from '@/lib/progress';
+import { getAchievements } from '@/lib/achievements';
+import ProfileHero from '@/components/ProfileHero';
 
 const THAI_MONTHS = [
   'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -102,6 +104,7 @@ export default function ProfilePage() {
       activity: getDailyActivity(),
       subjectAcc: getSubjectAccuracy(),
       topicAcc: getTopicAccuracy(),
+      achievements: getAchievements(),
       todayKey: localDateKey(),
     });
   }, []);
@@ -115,7 +118,7 @@ export default function ProfilePage() {
     );
   }
 
-  const { overview, streaks, activity, subjectAcc, topicAcc, todayKey } = data;
+  const { overview, streaks, activity, subjectAcc, topicAcc, todayKey, achievements } = data;
   const hasData = overview.sessions > 0;
 
   // 3 เดือนหลังสุด (รวมเดือนปัจจุบัน)
@@ -133,13 +136,10 @@ export default function ProfilePage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-navy mb-1">สถิติของฉัน</h1>
-      <p className="text-graydark/60 mb-8">
-        ความก้าวหน้าทั้งหมดของคุณ — คำนวณจากแบบฝึกหัดที่ทำจริง
-      </p>
+      <ProfileHero subjectAccuracy={subjectAcc} />
 
       {!hasData && (
-        <div className="border border-dashed border-graylight/40 rounded-2xl p-8 text-center mb-8">
+        <div className="app-card border-dashed p-8 text-center mb-8">
           <p className="text-graydark/60 mb-1">ยังไม่มีข้อมูลสถิติ</p>
           <p className="text-sm text-graydark/40 mb-5">
             เริ่มทำแบบฝึกหัดสักหัวข้อ แล้วสถิติทั้งหมดในหน้านี้จะเริ่มบันทึกให้อัตโนมัติ
@@ -154,7 +154,7 @@ export default function ProfilePage() {
       )}
 
       {/* ภาพรวม */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+      <div id="stats-overview" className="scroll-mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
         {[
           { icon: ListChecks, label: 'ข้อที่ฝึกทั้งหมด', value: overview.answered, sub: `${overview.sessions} ครั้ง` },
           {
@@ -166,7 +166,7 @@ export default function ProfilePage() {
           { icon: Flame, label: 'streak ปัจจุบัน', value: `${streaks.current} วัน`, sub: 'ฝึกต่อเนื่อง' },
           { icon: Trophy, label: 'streak สูงสุด', value: `${streaks.longest} วัน`, sub: `ฝึกไปแล้ว ${streaks.activeDays} วัน` },
         ].map(({ icon: Icon, label, value, sub }) => (
-          <div key={label} className="border border-graylight/30 rounded-2xl p-5">
+          <div key={label} className="app-card app-card-hover p-5">
             <div className="flex items-center gap-2 mb-3 text-graydark/60">
               <Icon size={16} className="text-accent-cyan" />
               <p className="text-xs">{label}</p>
@@ -177,10 +177,12 @@ export default function ProfilePage() {
         ))}
       </div>
 
+      <div id="achievements" className="scroll-mt-6"><AchievementPanel achievements={achievements} /></div>
+
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
           {/* Heatmap */}
-          <div className="border border-graylight/30 rounded-2xl p-6">
+          <div className="app-card p-6">
             <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <CalendarDays size={16} className="text-accent-cyan" />
@@ -216,7 +218,7 @@ export default function ProfilePage() {
           </div>
 
           {/* ความแม่นยำรายวิชา */}
-          <div className="border border-graylight/30 rounded-2xl p-6">
+          <div className="app-card p-6">
             <p className="text-sm font-medium text-navy mb-1">ความก้าวหน้ารายวิชา</p>
             <p className="text-xs text-graydark/40 mb-5">จำนวนข้อและความแม่นยำแยกตามวิชา</p>
 
@@ -256,7 +258,7 @@ export default function ProfilePage() {
 
         <div className="space-y-6">
           {/* จุดที่ควรพัฒนา */}
-          <div className="border border-graylight/30 rounded-2xl p-6">
+          <div className="app-card p-6">
             <p className="text-sm font-medium text-navy mb-1">จุดที่ควรพัฒนา</p>
             <p className="text-xs text-graydark/40 mb-4">หัวข้อย่อยที่ความแม่นยำต่ำสุด</p>
 
@@ -293,7 +295,7 @@ export default function ProfilePage() {
           </div>
 
           {/* ความก้าวหน้าคำศัพท์ — ยังไม่มีระบบคำศัพท์ในแอป */}
-          <div className="border border-graylight/30 rounded-2xl p-6">
+          <div className="app-card p-6">
             <div className="flex items-center gap-2 mb-1">
               <BookA size={16} className="text-accent-cyan" />
               <p className="text-sm font-medium text-navy">ความก้าวหน้าคำศัพท์</p>
@@ -311,5 +313,47 @@ export default function ProfilePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function AchievementPanel({ achievements }) {
+  const unlockedCount = achievements.filter((achievement) => achievement.unlocked).length;
+  const icons = {
+    rocket: Rocket,
+    flame: Flame,
+    target: Target,
+    book: BookOpenCheck,
+    medal: Medal,
+    trophy: Trophy,
+    compass: Compass,
+  };
+
+  return (
+    <section className="app-card p-5 sm:p-6 mb-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap mb-5">
+        <div>
+          <div className="flex items-center gap-2"><Trophy size={18} className="text-amber-500" /><h2 className="font-semibold text-navy">Achievement ของฉัน</h2></div>
+          <p className="text-sm text-graydark/55 mt-1">ปลดล็อกเหรียญจากพฤติกรรมการฝึกจริงของคุณ</p>
+        </div>
+        <span className="rounded-full bg-amber-50 text-amber-700 px-3 py-1.5 text-xs font-medium">ปลดล็อก {unlockedCount}/{achievements.length} เหรียญ</span>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {achievements.map((achievement) => {
+          const Icon = icons[achievement.icon] || Trophy;
+          return (
+            <article key={achievement.id} className={`rounded-xl border p-4 ${achievement.unlocked ? 'border-amber-200 bg-amber-50/60' : 'border-graylight/25 bg-graylight/5'}`}>
+              <div className="flex items-start gap-3">
+                <div className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center ${achievement.unlocked ? 'bg-amber-200 text-amber-700' : 'bg-graylight/15 text-graydark/35'}`}>
+                  {achievement.unlocked ? <Icon size={20} /> : <LockKeyhole size={18} />}
+                </div>
+                <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><h3 className={`text-sm font-semibold ${achievement.unlocked ? 'text-navy' : 'text-graydark/65'}`}>{achievement.name}</h3>{achievement.unlocked && <span className="text-[10px] font-medium text-amber-700">ปลดล็อกแล้ว</span>}</div><p className="text-xs text-graydark/50 mt-1 leading-relaxed">{achievement.description}</p></div>
+              </div>
+              {!achievement.unlocked && <div className="mt-3"><div className="flex justify-between text-[11px] text-graydark/45 mb-1"><span>ความคืบหน้า</span><span>{Math.min(achievement.current, achievement.target)}/{achievement.target} {achievement.unit}</span></div><div className="h-1.5 rounded-full bg-graylight/15 overflow-hidden"><div className="h-full rounded-full bg-accent-cyan" style={{ width: `${achievement.progress}%` }} /></div></div>}
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }

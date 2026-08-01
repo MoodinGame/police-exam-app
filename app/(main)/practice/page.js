@@ -2,11 +2,13 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Search, X, AlertCircle, Sparkles, Check } from 'lucide-react';
+import { ArrowRight, Search, X, AlertCircle, Sparkles, Check, Lock } from 'lucide-react';
 import { subjects, totalQuestions } from '@/lib/subjects';
 import { topics, topicsBySubject } from '@/lib/topics';
 import { subjectStyles } from '@/lib/subjectStyles';
 import { getSubjectProgress, getTopicProgress, getWrongBySubject } from '@/lib/progress';
+import { isFreePracticeTopic } from '@/lib/entitlements';
+import { useMembershipStatus } from '@/lib/useMembershipStatus';
 import PracticeFilter, { EMPTY_FILTER } from '@/components/PracticeFilter';
 import ResumeBanner from '@/components/ResumeBanner';
 
@@ -23,7 +25,7 @@ function SubjectCard({ subject, progress }) {
   return (
     <Link
       href={`/practice/${subject.id}`}
-      className={`rounded-2xl p-6 text-white flex flex-col ${style.color} hover:opacity-95 transition-opacity`}
+      className={`rounded-2xl p-6 text-white flex flex-col shadow-[0_14px_30px_rgba(43,45,66,0.15)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_38px_rgba(43,45,66,0.24)] ${style.color}`}
     >
       <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center mb-4">
         <Icon size={20} />
@@ -55,14 +57,16 @@ function SubjectCard({ subject, progress }) {
   );
 }
 
-function SetCard({ topic, attempt }) {
+function SetCard({ topic, attempt, isMember, isLoggedIn, accessLoading }) {
   const style = subjectStyles[topic.subjectId];
   const subject = subjects.find((s) => s.id === topic.subjectId);
   const pct = attempt ? Math.round((attempt.score / attempt.total) * 100) : null;
   const passed = pct !== null && pct >= PASS_PCT;
+  const isFreeTrial = isFreePracticeTopic(topic.id);
+  const canStart = topic.available && !accessLoading && (isMember || (isFreeTrial && isLoggedIn));
 
   return (
-    <div className="border border-graylight/30 rounded-2xl overflow-hidden flex flex-col hover:shadow-md hover:border-accent-cyan/50 transition-all">
+    <div className="app-card app-card-hover overflow-hidden flex flex-col">
       {attempt ? (
         <div
           className={`flex items-center justify-between gap-2 px-4 py-2 text-xs font-medium text-white ${
@@ -82,20 +86,11 @@ function SetCard({ topic, attempt }) {
       )}
 
       <div className="p-5 flex-1 flex flex-col">
-        <span
-          className={`self-start text-[10px] font-medium px-2 py-0.5 rounded-full mb-3 ${style.chip}`}
-        >
-          {style.short}
-        </span>
+        <div className="flex flex-wrap items-center gap-1.5 mb-3"><span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${style.chip}`}>{style.short}</span>{topic.available && isFreeTrial && <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700"><Sparkles size={9} /> ทดลองฟรี</span>}{topic.available && !isFreeTrial && !isMember && !accessLoading && <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700"><Lock size={9} /> สมาชิก</span>}</div>
         <h3 className="font-medium text-graydark leading-snug mb-1">{topic.name}</h3>
         <p className="text-xs text-graydark/50 mb-1">วิชา: {subject?.name}</p>
         <p className="text-xs text-graydark/40 mb-4">{topic.questionCount} ข้อ</p>
-        <Link
-          href={`/exam/${topic.subjectId}?topic=${topic.id}`}
-          className="mt-auto block text-center text-sm bg-navy text-white rounded-xl py-2.5 font-medium hover:opacity-90"
-        >
-          {attempt ? 'ทำอีกครั้ง' : 'ทำข้อสอบ'}
-        </Link>
+        {!topic.available ? <span className="mt-auto block text-center text-sm bg-graylight/15 text-graydark/40 rounded-xl py-2.5 font-medium">ยังไม่เปิดให้ทำ</span> : canStart ? <Link href={`/exam/${topic.subjectId}?topic=${topic.id}`} className="mt-auto block text-center text-sm bg-navy text-white rounded-xl py-2.5 font-medium hover:opacity-90">{attempt ? 'ทำอีกครั้ง' : 'ทำข้อสอบ'}</Link> : accessLoading ? <span className="mt-auto block text-center text-sm bg-graylight/15 text-graydark/40 rounded-xl py-2.5 font-medium">กำลังตรวจสอบสิทธิ์</span> : <Link href={isLoggedIn ? '/account' : '/login'} className="mt-auto flex items-center justify-center gap-1.5 text-center text-sm border border-amber-300 text-amber-700 rounded-xl py-2.5 font-medium hover:bg-amber-50"><Lock size={14} />{isLoggedIn ? 'ปลดล็อกสมาชิก' : isFreeTrial ? 'เข้าสู่ระบบเพื่อทดลอง' : 'เข้าสู่ระบบ'}</Link>}
       </div>
     </div>
   );
@@ -105,6 +100,7 @@ export default function PracticePage() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState(EMPTY_FILTER);
   const [stats, setStats] = useState(null);
+  const { loading: accessLoading, isLoggedIn, isMember } = useMembershipStatus();
 
   // อ่าน localStorage หลัง mount เท่านั้น เพื่อไม่ให้ markup ตอน SSR กับตอน hydrate ต่างกัน
   useEffect(() => {
@@ -184,7 +180,7 @@ export default function PracticePage() {
           </p>
         </div>
 
-        <div className="border border-graylight/30 rounded-2xl p-5 min-w-[240px]">
+        <div className="app-card p-5 min-w-[240px]">
           <p className="text-xs text-graydark/50 mb-2">ความก้าวหน้ารวม</p>
           <div className="flex items-center gap-3 mb-3">
             <p className="text-3xl font-bold text-navy">{stats ? `${overallPct}%` : '—'}</p>
@@ -206,6 +202,8 @@ export default function PracticePage() {
           </p>
         </div>
       </div>
+
+      {!accessLoading && !isMember && <section className="mb-5 flex flex-col gap-3 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/90 to-cyan-50/70 p-4 shadow-[0_10px_24px_rgba(0,180,216,0.08)] sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-accent-cyan shadow-sm"><Sparkles size={17} /></span><div><p className="text-sm font-semibold text-navy">ทดลองใช้ฟรี 6 ชุด · วิชาละ 1 ชุด</p><p className="mt-0.5 text-xs leading-5 text-graydark/60">มองหาป้าย “ทดลองฟรี” แล้วเข้าสู่ระบบด้วย OTP เพื่อเริ่มทำ ส่วนชุดอื่นเปิดสำหรับสมาชิก</p></div></div><Link href={isLoggedIn ? '/account' : '/login'} className="btn-navy shrink-0">{isLoggedIn ? 'ดูสมาชิก' : 'เข้าสู่ระบบ'}</Link></section>}
 
       <div className="flex items-stretch gap-3 mb-4">
         <div className="relative flex-1">
@@ -321,7 +319,7 @@ export default function PracticePage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {visibleSets.map((t) => (
-                <SetCard key={t.id} topic={t} attempt={stats?.topicAttempts[t.id] ?? null} />
+                <SetCard key={t.id} topic={t} attempt={stats?.topicAttempts[t.id] ?? null} isMember={isMember} isLoggedIn={isLoggedIn} accessLoading={accessLoading} />
               ))}
             </div>
           )}
@@ -365,6 +363,8 @@ export default function PracticePage() {
           <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
             {recommended.map((t) => {
               const style = subjectStyles[t.subjectId];
+              const isFreeTrial = isFreePracticeTopic(t.id);
+              const canStart = !accessLoading && (isMember || (isFreeTrial && isLoggedIn));
               return (
                 <div
                   key={t.id}
@@ -375,14 +375,10 @@ export default function PracticePage() {
                   >
                     {style.short}
                   </span>
+                  {isFreeTrial && <span className="self-start -mt-1 text-[10px] font-medium text-emerald-600">ทดลองฟรี</span>}
                   <p className="text-sm font-medium text-graydark leading-snug mb-1">{t.name}</p>
                   <p className="text-[11px] text-graydark/40 mb-3">{t.questionCount} ข้อ</p>
-                  <Link
-                    href={`/exam/${t.subjectId}?topic=${t.id}`}
-                    className="mt-auto text-center text-xs bg-navy text-white rounded-lg py-2 font-medium hover:opacity-90"
-                  >
-                    เริ่มทำ
-                  </Link>
+                  <Link href={canStart ? `/exam/${t.subjectId}?topic=${t.id}` : isLoggedIn ? '/account' : '/login'} className={`mt-auto text-center text-xs rounded-lg py-2 font-medium ${canStart ? 'bg-navy text-white hover:opacity-90' : 'border border-amber-300 text-amber-700 hover:bg-amber-50'}`}>{canStart ? 'เริ่มทำ' : isLoggedIn ? 'ปลดล็อก' : 'เข้าสู่ระบบ'}</Link>
                 </div>
               );
             })}

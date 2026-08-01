@@ -11,12 +11,32 @@ import {
   secureCookieOptions,
   serializeChallenge,
 } from '@/lib/otpServer';
+import { ensureRegistrationSchema, findUserByPhone } from '@/lib/serverUser';
 
 export const runtime = 'nodejs';
 
 const RATE_WINDOW_MS = 10 * 60 * 1000;
 const MAX_REQUESTS_PER_WINDOW = 3;
 const rateLimits = new Map();
+
+function getRegistration(body) {
+  if (body?.mode !== 'register') return null;
+
+  const username = String(body?.username || '').trim();
+  const email = String(body?.email || '').trim().toLowerCase();
+  const hasLetter = /[A-Za-z]/.test(username);
+
+  if (!/^[A-Za-z0-9]{4,15}$/.test(username) || !hasLetter) {
+    throw new Error('ชื่อผู้ใช้ต้องเป็นภาษาอังกฤษหรือตัวเลข 4–15 ตัว และมีตัวอักษรอย่างน้อย 1 ตัว');
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('กรุณากรอกอีเมลให้ถูกต้อง');
+  }
+  if (body?.acceptedTerms !== true) {
+    throw new Error('กรุณายอมรับข้อกำหนดการใช้งานและนโยบายความเป็นส่วนตัว');
+  }
+  return { username, email };
+}
 
 function getSmsProviderError(response, payload) {
   const message = [payload?.message, payload?.error, payload?.errors?.message]
@@ -44,10 +64,16 @@ function canRequestOtp(key) {
   const recent = (rateLimits.get(key) || []).filter((time) => time > now - RATE_WINDOW_MS);
   if (recent.length >= MAX_REQUESTS_PER_WINDOW) {
     rateLimits.set(key, recent);
-    return false;
+    return null;
   }
   rateLimits.set(key, [...recent, now]);
-  return true;
+  return now;
+}
+
+function releaseOtpRequest(key, requestedAt) {
+  const recent = (rateLimits.get(key) || []).filter((time) => time !== requestedAt);
+  if (recent.length) rateLimits.set(key, recent);
+  else rateLimits.delete(key);
 }
 
 export async function POST(request) {
@@ -61,17 +87,39 @@ export async function POST(request) {
   const phone = normalizeThaiPhone(body?.phone);
   if (!phone) return NextResponse.json({ error: 'กรุณากรอกเบอร์มือถือไทย 10 หลัก' }, { status: 400 });
 
+  let registration;
+  try {
+    registration = getRegistration(body);
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  try {
+    if (registration) await ensureRegistrationSchema();
+    const existingUser = await findUserByPhone(phone);
+    if (!registration && !existingUser) {
+      return NextResponse.json({ error: 'ยังไม่มีบัญชีสำหรับเบอร์นี้ กรุณาสมัครสมาชิกก่อนเข้าสู่ระบบ' }, { status: 404 });
+    }
+    if (registration && existingUser) {
+      return NextResponse.json({ error: 'เบอร์มือถือนี้มีบัญชีอยู่แล้ว กรุณาเข้าสู่ระบบด้วย OTP' }, { status: 409 });
+    }
+  } catch {
+    return NextResponse.json({ error: 'ระบบสมาชิกยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' }, { status: 503 });
+  }
+
   const config = getThsmsConfig();
   if (!config) {
     return NextResponse.json({ error: 'ระบบ SMS ยังไม่ได้ตั้งค่า โปรดเพิ่ม THSMS_API_TOKEN, THSMS_SENDER และ OTP_HMAC_SECRET บน server' }, { status: 503 });
   }
 
   const forwarded = headers().get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  if (!canRequestOtp(`${forwarded}:${phone}`)) {
+  const rateKey = `${forwarded}:${phone}`;
+  const requestedAt = canRequestOtp(rateKey);
+  if (!requestedAt) {
     return NextResponse.json({ error: 'ขอรหัสมากเกินไป กรุณารอ 10 นาทีแล้วลองใหม่' }, { status: 429 });
   }
 
-  const challenge = createOtpChallenge(phone);
+  const challenge = createOtpChallenge(phone, registration);
 
   if (isDevOtpMode()) {
     // ไม่ส่ง SMS จริง — อ่านรหัสได้จาก console ของ server ที่รัน npm run dev
@@ -101,10 +149,12 @@ export async function POST(request) {
           message: providerResponse?.message ?? null,
           errors: providerResponse?.errors ?? null,
         });
+        releaseOtpRequest(rateKey, requestedAt);
         return NextResponse.json({ error: getSmsProviderError(response, providerResponse) }, { status: 502 });
       }
     } catch (error) {
       console.error('[OTP] ติดต่อ THSMS ไม่สำเร็จ', error);
+      releaseOtpRequest(rateKey, requestedAt);
       return NextResponse.json({ error: 'ไม่สามารถเชื่อมต่อระบบ SMS ได้ กรุณาลองใหม่อีกครั้ง' }, { status: 502 });
     }
   }
