@@ -1,104 +1,160 @@
+'use client';
+
 import Link from 'next/link';
-import { AlertCircle, CheckCircle2, Clock3, FileText, LockKeyhole } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import {
-  mockExamBlueprint,
-  mockExamReady,
-  mockExamSections,
-  mockExamAvailableCount,
-  mockExamMissingCount,
-} from '@/lib/mockExamCatalog';
+  CheckCircle2,
+  ChevronRight,
+  CircleAlert,
+  Clock3,
+  FileText,
+  LockKeyhole,
+  PauseCircle,
+  RotateCcw,
+  ShieldCheck,
+  X,
+} from 'lucide-react';
+import { mockExamSets } from '@/lib/mockExamCatalog';
+import { getLatestMockAttempts } from '@/lib/mockExamProgress';
+import { getSession } from '@/lib/examSession';
 import ResumeBanner from '@/components/ResumeBanner';
 
 export default function MockExamPage() {
+  const [activeSession, setActiveSession] = useState(null);
+  const [attempts, setAttempts] = useState({});
+  const [startingExam, setStartingExam] = useState(null);
+
+  useEffect(() => {
+    const session = getSession();
+    setActiveSession(session?.kind === 'mock' ? session : null);
+    setAttempts(getLatestMockAttempts());
+  }, []);
+
+  const exams = [...mockExamSets].reverse();
+
   return (
     <div className="max-w-5xl">
       <ResumeBanner />
-      <div className="flex items-start justify-between gap-5 flex-wrap mb-8">
-        <div>
-          <h1 className="text-2xl font-semibold text-navy mb-1">ข้อสอบเสมือนจริง</h1>
-          <p className="text-graydark/60">จำลองบรรยากาศสอบจริงตามสัดส่วนสายอำนวยการ 2569</p>
+
+      <header className="mb-7 sm:mb-9">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="border-l-4 border-amber-500 pl-4">
+            <h1 className="text-2xl sm:text-3xl font-semibold text-navy">ข้อสอบเสมือนจริง</h1>
+            <p className="text-sm sm:text-base text-graydark/60 mt-1">เลือกชุดข้อสอบจำลอง ทำในเวลาจริง และกลับมาทำต่อได้ทุกเมื่อ</p>
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-xl bg-navy/5 px-4 py-2.5 text-sm text-navy">
+            <ShieldCheck size={18} className="text-accent-cyan" />
+            <span>{exams.length} ชุดข้อสอบ</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-sm text-graydark/60 bg-graylight/10 px-4 py-2.5 rounded-xl">
-          <Clock3 size={17} className="text-accent-cyan" />
-          180 นาที · 150 ข้อ
+      </header>
+
+      <section className="space-y-3" aria-label="รายการข้อสอบเสมือนจริง">
+        {exams.map((exam) => {
+          const isActive = activeSession?.examId === exam.id;
+          const attempt = attempts[exam.id];
+
+          return (
+            <article
+              key={exam.id}
+              className="bg-white border border-graylight/25 rounded-2xl px-4 py-4 sm:px-6 sm:py-5 shadow-sm flex items-center gap-3 sm:gap-5"
+            >
+              <div className="w-12 h-12 shrink-0 rounded-xl bg-navy flex items-center justify-center text-amber-400">
+                <FileText size={22} />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="font-semibold text-navy text-base sm:text-lg truncate">{exam.title}</h2>
+                  {exam.ready ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-[11px] font-medium">
+                      <CheckCircle2 size={13} /> พร้อมสอบ
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-700 px-2 py-0.5 text-[11px] font-medium">
+                      <LockKeyhole size={12} /> รออัปเดต
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-x-4 gap-y-1 flex-wrap text-sm text-graydark/60 mt-1.5">
+                  <span className="inline-flex items-center gap-1.5"><FileText size={14} /> {exam.totalQuestions} ข้อ</span>
+                  <span className="inline-flex items-center gap-1.5"><Clock3 size={14} /> {exam.durationMinutes} นาที</span>
+                  {attempt && <span className="font-medium text-amber-700">ครั้งล่าสุด {attempt.score}/{attempt.total}</span>}
+                </div>
+
+                {!exam.ready && (
+                  <p className="text-xs text-graydark/45 mt-2">แอดมินกำลังจัดชุดคำถาม ({exam.available}/{exam.totalQuestions} ข้อ)</p>
+                )}
+              </div>
+
+              <ExamAction
+                exam={exam}
+                isActive={isActive}
+                hasAttempt={Boolean(attempt)}
+                onStart={() => setStartingExam(exam)}
+              />
+            </article>
+          );
+        })}
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-sky-100 bg-sky-50/50 p-4 sm:p-5 flex gap-3">
+        <CircleAlert className="text-accent-cyan shrink-0 mt-0.5" size={20} />
+        <p className="text-sm text-graydark/70 leading-relaxed">
+          ข้อสอบแต่ละชุดใช้คลังคำถามแยกจากแบบฝึกหัดรายวิชา เมื่อแอดมินเผยแพร่คำถามครบ 150 ข้อตามสัดส่วน ระบบจะเปิดให้เริ่มสอบอัตโนมัติ
+        </p>
+      </section>
+
+      {startingExam && <StartMockModal exam={startingExam} onClose={() => setStartingExam(null)} />}
+    </div>
+  );
+}
+
+function ExamAction({ exam, isActive, hasAttempt, onStart }) {
+  const className = 'shrink-0 inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 sm:px-4 py-2.5 text-sm font-medium transition-colors';
+
+  if (!exam.ready) {
+    return <span className={`${className} bg-graylight/15 text-graydark/45 cursor-not-allowed`}><LockKeyhole size={15} /><span className="hidden sm:inline">กำลังจัดทำ</span></span>;
+  }
+
+  if (isActive) {
+    return <Link href={`/mock-exam/${exam.id}`} className={`${className} bg-navy text-white hover:bg-navy/90`}><PauseCircle size={16} /> ทำต่อ <ChevronRight size={16} /></Link>;
+  }
+
+  if (hasAttempt) {
+    return <button type="button" onClick={onStart} className={`${className} bg-navy text-white hover:bg-navy/90`}><RotateCcw size={16} /><span className="hidden sm:inline">ทำอีกครั้ง</span><ChevronRight size={16} /></button>;
+  }
+
+  return <button type="button" onClick={onStart} className={`${className} bg-navy text-white hover:bg-navy/90`}><span className="hidden sm:inline">เริ่มสอบ</span><span className="sm:hidden">เริ่ม</span><ChevronRight size={16} /></button>;
+}
+
+function StartMockModal({ exam, onClose }) {
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-navy/55 px-4 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="start-mock-title">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 sm:p-8 text-center relative">
+        <button type="button" onClick={onClose} className="absolute right-4 top-4 text-graydark/40 hover:text-graydark" aria-label="ปิดหน้าต่าง"><X size={20} /></button>
+        <div className="w-20 h-20 mx-auto rounded-full border-4 border-amber-300 text-amber-500 flex items-center justify-center mb-5">
+          <CircleAlert size={36} />
+        </div>
+        <h2 id="start-mock-title" className="text-2xl font-semibold text-navy">เริ่มข้อสอบเสมือนจริง?</h2>
+        <p className="font-medium text-graydark mt-5">{exam.title}</p>
+        <p className="text-sm text-graydark/60 mt-1">ข้อสอบ {exam.totalQuestions} ข้อ · จับเวลา {exam.durationMinutes} นาที</p>
+        <p className="text-xs text-graydark/50 mt-3">เมื่อเริ่มแล้ว นาฬิกาจะเดินทันที แต่สามารถหยุดพักและกลับมาทำต่อได้</p>
+        <div className="flex justify-center gap-3 mt-7">
+          <Link href={`/mock-exam/${exam.id}`} className="rounded-xl bg-navy text-white px-5 py-3 text-sm font-medium hover:bg-navy/90">เริ่มสอบเลย</Link>
+          <button type="button" onClick={onClose} className="rounded-xl bg-graylight text-white px-5 py-3 text-sm font-medium hover:bg-graylight/90">ยังไม่พร้อม</button>
         </div>
       </div>
-
-      <section className="border border-graylight/30 rounded-2xl overflow-hidden mb-6">
-        <div className="bg-navy px-6 py-5 text-white flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <p className="text-accent-cyan text-xs font-medium mb-1">MOCK EXAM 01</p>
-            <h2 className="font-semibold text-lg">{mockExamBlueprint.title}</h2>
-            <p className="text-white/65 text-sm mt-1">เกณฑ์ผ่าน {mockExamBlueprint.passScore}/{mockExamBlueprint.totalQuestions} คะแนน</p>
-          </div>
-          {mockExamReady ? (
-            <span className="inline-flex items-center gap-1.5 bg-accent-green/20 text-accent-green text-xs font-medium px-3 py-2 rounded-full">
-              <CheckCircle2 size={15} /> พร้อมสอบ
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 bg-orange-400/15 text-orange-300 text-xs font-medium px-3 py-2 rounded-full">
-              <AlertCircle size={15} /> กำลังจัดทำคลังข้อสอบ
-            </span>
-          )}
-        </div>
-
-        <div className="p-5 sm:p-6">
-          <div className="flex items-center justify-between gap-4 mb-3 text-sm">
-            <span className="font-medium text-graydark">ความพร้อมของคลังข้อสอบ</span>
-            <span className="text-navy font-semibold">{mockExamAvailableCount} / {mockExamBlueprint.totalQuestions} ข้อ</span>
-          </div>
-          <div className="h-2.5 rounded-full bg-graylight/20 overflow-hidden mb-3">
-            <div className="h-full bg-accent-cyan transition-all" style={{ width: `${Math.round((mockExamAvailableCount / mockExamBlueprint.totalQuestions) * 100)}%` }} />
-          </div>
-          {!mockExamReady && (
-            <div className="flex gap-2 rounded-xl bg-orange-50 border border-orange-200 p-3 text-sm text-orange-800 mb-6">
-              <AlertCircle size={18} className="shrink-0 mt-0.5" />
-              <p>ยังเปิดสอบเต็มชุดไม่ได้: ต้องเติมข้อสอบใหม่ที่ไม่ซ้ำกับแบบฝึกหัดอีก <strong>{mockExamMissingCount} ข้อ</strong> ก่อน ระบบจะปลดล็อกอัตโนมัติเมื่อครบทุกวิชา</p>
-            </div>
-          )}
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
-            {mockExamSections.map((section) => {
-              const complete = section.available >= section.required;
-              return (
-                <div key={section.id} className="border border-graylight/25 rounded-xl p-4">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <p className="font-medium text-sm text-graydark leading-snug">{section.name}</p>
-                    {complete ? <CheckCircle2 size={16} className="text-accent-green shrink-0" /> : <LockKeyhole size={15} className="text-graydark/35 shrink-0" />}
-                  </div>
-                  <p className="text-xs text-graydark/50">ต้องมี {section.required} ข้อ · มีแล้ว {section.available} ข้อ</p>
-                  <div className="h-1.5 bg-graylight/15 rounded-full overflow-hidden mt-3">
-                    <div className={`h-full ${complete ? 'bg-accent-green' : 'bg-graylight/40'}`} style={{ width: `${Math.min(100, Math.round((section.available / section.required) * 100))}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {mockExamReady ? (
-            <Link href={`/mock-exam/${mockExamBlueprint.id}`} className="inline-flex items-center justify-center bg-accent-cyan text-white rounded-xl px-5 py-3 text-sm font-medium hover:opacity-90">
-              เริ่มสอบเต็มชุด
-            </Link>
-          ) : (
-            <button type="button" disabled className="inline-flex items-center gap-2 bg-graylight/25 text-graydark/50 rounded-xl px-5 py-3 text-sm font-medium cursor-not-allowed">
-              <LockKeyhole size={16} /> เริ่มสอบเต็มชุดเมื่อคลังครบ 150 ข้อ
-            </button>
-          )}
-        </div>
-      </section>
-
-      <section className="grid sm:grid-cols-2 gap-4">
-        <div className="border border-graylight/25 rounded-2xl p-5">
-          <FileText className="text-accent-cyan mb-3" size={22} />
-          <h2 className="font-semibold text-navy mb-1">แยกคลังจากแบบฝึกหัด</h2>
-          <p className="text-sm text-graydark/60 leading-relaxed">ข้อสอบ Mock Exam จะเก็บคนละคลังกับแบบฝึกหัดรายวิชา เพื่อไม่ให้เจอข้อซ้ำระหว่างการฝึกและการสอบจำลอง</p>
-        </div>
-        <div className="border border-graylight/25 rounded-2xl p-5">
-          <Clock3 className="text-accent-cyan mb-3" size={22} />
-          <h2 className="font-semibold text-navy mb-1">ระบบสอบเตรียมพร้อมแล้ว</h2>
-          <p className="text-sm text-graydark/60 leading-relaxed">เมื่อคลังครบ จะใช้ panel การทำข้อสอบเดียวกับแบบฝึกหัด พร้อมจับเวลา 180 นาที, ทำเครื่องหมายไม่แน่ใจ และหยุดพัก/ทำต่อ</p>
-        </div>
-      </section>
     </div>
   );
 }
