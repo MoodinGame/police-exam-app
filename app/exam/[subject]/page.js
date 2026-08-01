@@ -1,12 +1,18 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { subjects } from '@/lib/subjects';
 import { questions } from '@/lib/questions';
 import { topics } from '@/lib/topics';
 import { recordTopicAttempt } from '@/lib/progress';
+import {
+  saveSession,
+  getSessionFor,
+  clearSessionIf,
+  practiceSessionId,
+} from '@/lib/examSession';
 import {
   CheckCircle2,
   XCircle,
@@ -16,6 +22,7 @@ import {
   FileText,
   ListOrdered,
   RotateCcw,
+  PauseCircle,
 } from 'lucide-react';
 
 const CHOICE_LABELS = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -67,7 +74,30 @@ export default function ExamPage() {
   const [flagged, setFlagged] = useState({});
   const [secondsLeft, setSecondsLeft] = useState(subjectQuestions.length * 60); // demo: 1 นาที/ข้อ
   const [showNav, setShowNav] = useState(false); // รายการข้อสอบบนจอเล็ก
+  const [resumed, setResumed] = useState(false);
+  // ต้องเป็น state ไม่ใช่ ref เพราะ effect บันทึกต้องรอจน state ที่กู้มาถูก apply จริงก่อน
+  // ไม่งั้นรอบแรกจะบันทึกทับด้วยคำตอบว่างแล้วของที่พักไว้จะหาย
+  const [restoreDone, setRestoreDone] = useState(false);
   const recordedRef = useRef(false);
+  const restoredRef = useRef(false);
+
+  const router = useRouter();
+  const sessionId = practiceSessionId(subjectId, topicId);
+
+  // กู้ข้อสอบที่ค้างไว้ (ถ้าเป็นชุดเดียวกัน) — ทำครั้งเดียวหลัง mount
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    const saved = getSessionFor(sessionId);
+    if (saved && saved.total === subjectQuestions.length) {
+      setAnswers(saved.answers || {});
+      setFlagged(saved.flagged || {});
+      setCurrent(Math.min(saved.current || 0, subjectQuestions.length - 1));
+      setSecondsLeft(saved.secondsLeft ?? subjectQuestions.length * 60);
+      setResumed(true);
+    }
+    setRestoreDone(true);
+  }, [sessionId, subjectQuestions.length]);
 
   useEffect(() => {
     if (phase !== 'taking') return;
@@ -78,6 +108,23 @@ export default function ExamPage() {
     const t = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
     return () => clearTimeout(t);
   }, [secondsLeft, phase]);
+
+  // บันทึกความคืบหน้าอัตโนมัติระหว่างทำ เผื่อปิดแท็บไปเฉยๆ
+  useEffect(() => {
+    if (phase !== 'taking' || !restoreDone || subjectQuestions.length === 0) return;
+    saveSession({
+      sessionId,
+      kind: 'practice',
+      subjectId,
+      topicId: topicId || null,
+      label: topic ? topic.name : subject?.name,
+      answers,
+      flagged,
+      current,
+      secondsLeft,
+      total: subjectQuestions.length,
+    });
+  }, [phase, restoreDone, sessionId, subjectId, topicId, topic, subject, answers, flagged, current, secondsLeft, subjectQuestions.length]);
 
   const score = subjectQuestions.reduce(
     (acc, item) => acc + (answers[item.id] === item.answerIndex ? 1 : 0),
@@ -126,6 +173,7 @@ export default function ExamPage() {
     setFlagged({});
     setCurrent(0);
     setSecondsLeft(total * 60);
+    setResumed(false);
     recordedRef.current = false;
     setPhase('taking');
   }
@@ -135,7 +183,24 @@ export default function ExamPage() {
     if (left > 0 && !window.confirm(`ยังเหลืออีก ${left} ข้อที่ยังไม่ได้ตอบ ต้องการส่งข้อสอบเลยหรือไม่?`)) {
       return;
     }
+    clearSessionIf(sessionId); // ส่งแล้วไม่ต้องค้างไว้ให้ทำต่อ
     setPhase('result');
+  }
+
+  function pauseAndExit() {
+    saveSession({
+      sessionId,
+      kind: 'practice',
+      subjectId,
+      topicId: topicId || null,
+      label: setName,
+      answers,
+      flagged,
+      current,
+      secondsLeft,
+      total,
+    });
+    router.push(topicId ? `/practice/${subjectId}` : '/practice');
   }
 
   // ---------- หน้าผลคะแนน ----------
@@ -309,12 +374,24 @@ export default function ExamPage() {
             </div>
           </div>
 
-          <Link
-            href={topicId ? `/practice/${subjectId}` : '/practice'}
-            className="text-xs sm:text-sm font-medium text-red-500 border border-red-300 rounded-xl px-3 sm:px-4 py-2 hover:bg-red-50 shrink-0"
-          >
-            ออกจากการทำข้อสอบ
-          </Link>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={pauseAndExit}
+              className="flex items-center gap-1.5 text-xs sm:text-sm font-medium text-navy border border-graylight/40 rounded-xl px-3 sm:px-4 py-2 hover:bg-graylight/10"
+            >
+              <PauseCircle size={15} />
+              <span className="hidden sm:inline">หยุดพักไว้ก่อน</span>
+              <span className="sm:hidden">พัก</span>
+            </button>
+            <Link
+              href={topicId ? `/practice/${subjectId}` : '/practice'}
+              onClick={() => clearSessionIf(sessionId)}
+              className="text-xs sm:text-sm font-medium text-red-500 border border-red-300 rounded-xl px-3 sm:px-4 py-2 hover:bg-red-50"
+            >
+              <span className="hidden sm:inline">ออกจากการทำข้อสอบ</span>
+              <span className="sm:hidden">ออก</span>
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -331,6 +408,15 @@ export default function ExamPage() {
 
         {/* กลาง: คำถาม */}
         <main className="min-w-0">
+          {resumed && (
+            <div className="mb-4 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <PauseCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-800">
+                ทำต่อจากที่พักไว้ — คำตอบและเวลาที่เหลือถูกกู้กลับมาแล้ว
+              </p>
+            </div>
+          )}
+
           <div className="border border-graylight/30 rounded-2xl p-5 sm:p-6 bg-white">
             <div className="flex items-center justify-between gap-3 mb-4">
               <p className="font-semibold text-navy">

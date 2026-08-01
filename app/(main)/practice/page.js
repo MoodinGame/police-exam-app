@@ -8,6 +8,7 @@ import { topics, topicsBySubject } from '@/lib/topics';
 import { subjectStyles } from '@/lib/subjectStyles';
 import { getSubjectProgress, getTopicProgress, getWrongBySubject } from '@/lib/progress';
 import PracticeFilter, { EMPTY_FILTER } from '@/components/PracticeFilter';
+import ResumeBanner from '@/components/ResumeBanner';
 
 const PASS_PCT = 60;
 
@@ -269,6 +270,8 @@ export default function PracticePage() {
           </button>
         )}
       </div>
+
+      <ResumeBanner />
 
       {stats && stats.wrongBySubject.length > 0 && !showingSets && (
         <section className="border border-red-200 bg-red-50/40 rounded-2xl p-6 mb-8">
