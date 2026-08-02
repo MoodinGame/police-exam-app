@@ -15,6 +15,8 @@ import {
   localDateKey,
 } from '@/lib/progress';
 import { getAchievements } from '@/lib/achievements';
+import { vocabularyCards as fallbackVocabularyCards } from '@/lib/vocabulary';
+import { getVocabularyProgress, getVocabularyStats } from '@/lib/vocabularyProgress';
 import ProfileHero from '@/components/ProfileHero';
 
 const THAI_MONTHS = [
@@ -93,20 +95,74 @@ function MonthHeatmap({ year, month, activity, todayKey }) {
   );
 }
 
+function buildProfileDataFromStats(stats, vocabularyCards = fallbackVocabularyCards) {
+  const subjectAcc = Object.fromEntries((stats.subjectStats || []).map((item) => [item.id, {
+    answered: item.answered,
+    correct: item.correct,
+    pct: item.pct,
+    sessions: item.sessions,
+  }]));
+  const topicAcc = Object.fromEntries((stats.topicStats || [])
+    .map((item) => [item.legacyId || item.id, {
+      answered: item.answered,
+      correct: item.correct,
+      pct: item.pct,
+      sessions: item.sessions,
+      subjectId: item.subjectId,
+      name: item.name,
+    }]));
+
+  return {
+    overview: stats.overview,
+    streaks: stats.streaks,
+    activity: stats.activity || {},
+    subjectAcc,
+    topicAcc,
+    achievements: getAchievements(),
+    vocabulary: getVocabularyStats(vocabularyCards, getVocabularyProgress()),
+    todayKey: localDateKey(),
+  };
+}
+
 export default function ProfilePage() {
   const [data, setData] = useState(null);
 
   // อ่าน localStorage หลัง mount เท่านั้น เพื่อไม่ให้ markup ตอน SSR กับตอน hydrate ต่างกัน
   useEffect(() => {
-    setData({
-      overview: getOverview(),
-      streaks: getStreaks(),
-      activity: getDailyActivity(),
-      subjectAcc: getSubjectAccuracy(),
-      topicAcc: getTopicAccuracy(),
-      achievements: getAchievements(),
-      todayKey: localDateKey(),
-    });
+    let active = true;
+    async function loadProfile() {
+      let vocabularyCards = fallbackVocabularyCards;
+      try {
+        const [response, vocabularyResponse] = await Promise.all([
+          fetch('/api/stats', { cache: 'no-store' }),
+          fetch('/api/vocabulary', { cache: 'no-store' }),
+        ]);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Unable to load stats');
+        if (vocabularyResponse.ok) {
+          const vocabularyPayload = await vocabularyResponse.json();
+          if (vocabularyPayload.cards?.length) vocabularyCards = vocabularyPayload.cards;
+        }
+        if (active) setData(buildProfileDataFromStats(payload, vocabularyCards));
+      } catch {
+        if (active) {
+          setData({
+            overview: getOverview(),
+            streaks: getStreaks(),
+            activity: getDailyActivity(),
+            subjectAcc: getSubjectAccuracy(),
+            topicAcc: getTopicAccuracy(),
+            achievements: getAchievements(),
+            vocabulary: getVocabularyStats(vocabularyCards, getVocabularyProgress()),
+            todayKey: localDateKey(),
+          });
+        }
+      }
+    }
+    loadProfile();
+    return () => {
+      active = false;
+    };
   }, []);
 
   if (!data) {
@@ -118,7 +174,7 @@ export default function ProfilePage() {
     );
   }
 
-  const { overview, streaks, activity, subjectAcc, topicAcc, todayKey, achievements } = data;
+  const { overview, streaks, activity, subjectAcc, topicAcc, todayKey, achievements, vocabulary } = data;
   const hasData = overview.sessions > 0;
 
   // 3 เดือนหลังสุด (รวมเดือนปัจจุบัน)
@@ -129,7 +185,15 @@ export default function ProfilePage() {
   });
 
   const weakTopics = Object.entries(topicAcc)
-    .map(([id, v]) => ({ ...v, id, topic: topics.find((t) => t.id === id) }))
+    .map(([id, v]) => ({
+      ...v,
+      id,
+      topic: topics.find((t) => t.id === id) || {
+        id,
+        name: v.name || 'หัวข้อที่ยังไม่ระบุชื่อ',
+        subjectId: v.subjectId,
+      },
+    }))
     .filter((t) => t.topic && t.pct !== null)
     .sort((a, b) => a.pct - b.pct)
     .slice(0, 6);
@@ -294,21 +358,17 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* ความก้าวหน้าคำศัพท์ — ยังไม่มีระบบคำศัพท์ในแอป */}
           <div className="app-card p-6">
             <div className="flex items-center gap-2 mb-1">
               <BookA size={16} className="text-accent-cyan" />
               <p className="text-sm font-medium text-navy">ความก้าวหน้าคำศัพท์</p>
             </div>
-            <p className="text-xs text-graydark/40 mb-4">
-              จะแสดงจำนวนคำที่จำได้แยกตามระดับ A1–B2 เมื่อมีระบบฝึกคำศัพท์แล้ว
-            </p>
-            <div className="border border-dashed border-graylight/40 rounded-xl p-5 text-center">
-              <p className="text-sm text-graydark/40 mb-1">ยังไม่มีระบบฝึกคำศัพท์</p>
-              <p className="text-[11px] text-graydark/30">
-                ต้องสร้างหน้าคำศัพท์ (Oxford 3000 / ศัพท์ตำรวจ) ก่อน จึงจะมีข้อมูลมาแสดงตรงนี้
-              </p>
+            <p className="text-xs text-graydark/40 mb-4">Oxford 3000 ชุดเริ่มต้นและศัพท์เฉพาะตำรวจ</p>
+            <div className="rounded-xl border border-cyan-100 bg-cyan-50/55 p-4">
+              <div className="flex items-end justify-between gap-3"><div><p className="text-2xl font-black text-navy">{vocabulary.mastered}<span className="ml-1 text-sm font-semibold text-graydark/45">/ {vocabulary.total} คำ</span></p><p className="mt-1 text-xs text-graydark/55">จำได้แล้ว · ทบทวน {vocabulary.reviewing} คำ</p></div><span className="text-lg font-black text-accent-cyan">{vocabulary.percentage}%</span></div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-accent-cyan" style={{ width: `${vocabulary.percentage}%` }} /></div>
             </div>
+            <Link href="/vocab" className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-accent-cyan hover:underline">ไปฝึกคำศัพท์ →</Link>
           </div>
         </div>
       </div>

@@ -9,15 +9,24 @@ import {
   ClipboardCheck,
   Clock3,
   FileQuestion,
+  Languages,
   Layers3,
+  Library,
   LockKeyhole,
   Medal,
+  Puzzle,
   ShieldCheck,
+  Shuffle,
   Sparkles,
   Target,
   Timer,
   TrendingUp,
 } from 'lucide-react';
+import { formatCurrency, getPublicFallbackPlans } from '@/lib/membership';
+import { getPublicPlans } from '@/lib/serverAccess';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import Reveal from '@/components/Reveal';
+import OnlineStatusBadge from '@/components/OnlineStatusBadge';
 
 const trustPoints = [
   { icon: Target, title: 'เห็นจุดที่ควรฝึก', text: 'ดูความแม่นยำแยกตามวิชา' },
@@ -39,7 +48,36 @@ const steps = [
   { number: '03', title: 'ฝึกและเห็นผลทันที', text: 'ใช้สถิติเพื่อเลือกสิ่งที่ควรทบทวนต่อ', icon: BarChart3 },
 ];
 
-export default function HomePage() {
+const tools = [
+  { icon: Shuffle, title: 'สุ่มข้อสอบ (Random Quiz)', text: 'เลือกจำนวนข้อที่ต้องการ สุ่มโจทย์จากทุกวิชา ฝึกไวได้ทุกช่วงเวลาว่าง' },
+  { icon: Languages, title: 'คลังคำศัพท์ (Flashcard)', text: 'ทบทวนคำศัพท์เฉพาะทางตำรวจและภาษาอังกฤษแบบพลิกการ์ด จำง่าย ทบทวนซ้ำได้ไว' },
+  { icon: Puzzle, title: 'เกมจับคู่คำศัพท์', text: 'ฝึกจำผ่านเกมจับคู่ สนุกกว่าอ่านเฉยๆ และช่วยให้จำได้แม่นขึ้น' },
+  { icon: Library, title: 'คลังความรู้', text: 'อ่านสรุปเจาะลึกแต่ละหัวข้อ พร้อมจุดที่ออกสอบบ่อย ก่อนลงมือทำโจทย์จริง' },
+];
+
+// แพ็กเกจจริงมาจากตาราง membership_plans (จัดการผ่านแอดมิน) ถ้าต่อฐานข้อมูลไม่ได้ค่อย fallback ไปใช้ค่าเริ่มต้นใน lib/membership.js
+async function getMembershipPlans() {
+  try {
+    const supabase = getSupabaseAdmin();
+    const plans = await getPublicPlans(supabase);
+    return plans && plans.length ? plans : getPublicFallbackPlans();
+  } catch {
+    return getPublicFallbackPlans();
+  }
+}
+
+function planPriceSuffix(plan) {
+  if (!plan.price) return '';
+  if (plan.billingType === 'subscription' && plan.durationDays) {
+    return plan.durationDays >= 360 ? '/ ปี' : `/ ${plan.durationDays} วัน`;
+  }
+  if (plan.billingType === 'one_time') return '/ ครั้ง';
+  return '';
+}
+
+export default async function HomePage() {
+  const plans = await getMembershipPlans();
+
   return (
     <main className="min-h-screen overflow-hidden bg-[#fbfcff] text-graydark">
       <Header />
@@ -48,28 +86,43 @@ export default function HomePage() {
         <div className="pointer-events-none absolute inset-x-0 top-0 h-full bg-[radial-gradient(ellipse_at_80%_20%,rgba(42,91,255,0.10),transparent_32%),radial-gradient(ellipse_at_20%_15%,rgba(211,169,80,0.10),transparent_25%)]" />
         <div className="relative mx-auto grid max-w-6xl gap-10 px-5 pb-14 pt-14 sm:px-8 sm:pb-20 sm:pt-20 lg:grid-cols-[0.96fr_1.04fr] lg:items-center lg:gap-12">
           <div className="max-w-xl">
-            <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-[#2457d6]"><Sparkles size={14} /> สำหรับผู้สมัครสอบตำรวจ</span>
-            <h1 className="mt-5 text-[2.55rem] font-semibold leading-[1.2] tracking-tight text-[#172856] sm:text-5xl lg:text-[3.5rem]">ฝึกให้ตรงจุด<br /><span className="text-[#245cff]">เพิ่มความมั่นใจ</span><br />ก่อนวันสอบจริง</h1>
-            <p className="mt-5 max-w-lg text-base leading-8 text-slate-500 sm:text-lg">POLREADY ช่วยจัดการการฝึกสอบของคุณให้เป็นระบบ ทั้งแบบฝึกตามวิชา, Mock Exam, แฟลชการ์ด และสถิติส่วนตัวในที่เดียว</p>
+            <Reveal className="flex flex-wrap items-center gap-2.5">
+              <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-[#2457d6]"><Sparkles size={14} /> สำหรับผู้สมัครสอบตำรวจ</span>
+              <OnlineStatusBadge />
+            </Reveal>
+            <Reveal delay={80}>
+              <h1 className="mt-5 text-[2.55rem] font-semibold leading-[1.2] tracking-tight text-[#172856] sm:text-5xl lg:text-[3.5rem]">ฝึกให้ตรงจุด<br /><span className="text-[#245cff]">เพิ่มความมั่นใจ</span><br />ก่อนวันสอบจริง</h1>
+            </Reveal>
+            <Reveal delay={160}>
+              <p className="mt-5 max-w-lg text-base leading-8 text-slate-500 sm:text-lg">POLREADY ช่วยจัดการการฝึกสอบของคุณให้เป็นระบบ ทั้งแบบฝึกตามวิชา, Mock Exam, แฟลชการ์ด และสถิติส่วนตัวในที่เดียว</p>
+            </Reveal>
             <div className="mt-7 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-              {trustPoints.map(({ icon: Icon, title, text }) => <article key={title} className="rounded-2xl border border-slate-100 bg-[#fbfcff] p-3.5 shadow-sm"><Icon size={19} className="text-[#245cff]" /><h2 className="mt-3 text-xs font-semibold leading-5 text-[#172856]">{title}</h2><p className="mt-1 text-[11px] leading-4 text-slate-400">{text}</p></article>)}
+              {trustPoints.map(({ icon: Icon, title, text }, index) => (
+                <Reveal key={title} delay={220 + index * 80} as="article" className="rounded-2xl border border-slate-100 bg-[#fbfcff] p-3.5 shadow-sm">
+                  <Icon size={19} className="text-[#245cff]" /><h2 className="mt-3 text-xs font-semibold leading-5 text-[#172856]">{title}</h2><p className="mt-1 text-[11px] leading-4 text-slate-400">{text}</p>
+                </Reveal>
+              ))}
             </div>
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+            <Reveal delay={520} className="mt-7 flex flex-col gap-3 sm:flex-row">
               <Link href="/register" className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#d3a950] px-5 py-3.5 text-sm font-semibold text-[#172856] shadow-lg shadow-[#d3a950]/20 transition hover:-translate-y-0.5 hover:bg-[#e0bb6d]">สมัครใช้งานและทดลองทำข้อสอบ <ArrowRight size={17} /></Link>
               <a href="#membership" className="inline-flex items-center justify-center rounded-xl border border-[#172856] px-5 py-3.5 text-sm font-semibold text-[#172856] transition hover:bg-[#172856] hover:text-white">ดูรายละเอียดสมาชิก</a>
-            </div>
+            </Reveal>
             <p className="mt-4 text-xs text-slate-400">ไม่ต้องสมัครผ่าน Google · ใช้เบอร์โทรศัพท์ของคุณเพื่อเข้าสู่ระบบ</p>
           </div>
-          <HeroPanel />
+          <Reveal delay={200}>
+            <div className="animate-float">
+              <HeroPanel />
+            </div>
+          </Reveal>
         </div>
       </section>
 
       <section className="bg-[#1c2b5a] text-white">
         <div className="mx-auto grid max-w-5xl grid-cols-2 divide-x divide-white/15 px-5 sm:grid-cols-4 sm:px-8">
-          <Metric value="6" label="รายวิชาหลัก" />
-          <Metric value="29" label="หัวข้อย่อย" />
-          <Metric value="150" label="ข้อ / Mock Exam" />
-          <Metric value="365" label="วันสมาชิก" />
+          <Reveal delay={0}><Metric value="8" label="รายวิชาหลัก" /></Reveal>
+          <Reveal delay={80}><Metric value="270+" label="หัวข้อย่อย" /></Reveal>
+          <Reveal delay={160}><Metric value="150" label="ข้อ / Mock Exam" /></Reveal>
+          <Reveal delay={240}><Metric value="365" label="วันสมาชิก" /></Reveal>
         </div>
       </section>
 
@@ -81,28 +134,36 @@ export default function HomePage() {
       </section>
 
       <section className="bg-[#f7f9fc] px-5 py-20 sm:px-8 sm:py-24">
-        <div className="mx-auto max-w-6xl"><SectionHeading eyebrow="START WITH THE PROBLEM" title="เจอปัญหาเหล่านี้อยู่ไหม?" text="การเตรียมสอบที่ดีไม่ใช่แค่อ่านให้มากขึ้น แต่ต้องรู้ว่าจะฝึกอะไรต่อ" />
-          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{problems.map(({ icon: Icon, title, text }) => <article key={title} className="rounded-2xl border border-slate-100 bg-white p-5 text-center shadow-sm transition hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/60"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#eaf0ff] text-[#245cff]"><Icon size={25} /></span><h3 className="mt-5 text-sm font-semibold leading-6 text-[#172856]">{title}</h3><p className="mt-2 text-xs leading-5 text-slate-400">{text}</p></article>)}</div>
+        <div className="mx-auto max-w-6xl">
+          <Reveal><SectionHeading eyebrow="START WITH THE PROBLEM" title="เจอปัญหาเหล่านี้อยู่ไหม?" text="การเตรียมสอบที่ดีไม่ใช่แค่อ่านให้มากขึ้น แต่ต้องรู้ว่าจะฝึกอะไรต่อ" /></Reveal>
+          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{problems.map(({ icon: Icon, title, text }, index) => <Reveal key={title} delay={index * 90} as="article" className="rounded-2xl border border-slate-100 bg-white p-5 text-center shadow-sm transition hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/60"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#eaf0ff] text-[#245cff]"><Icon size={25} /></span><h3 className="mt-5 text-sm font-semibold leading-6 text-[#172856]">{title}</h3><p className="mt-2 text-xs leading-5 text-slate-400">{text}</p></Reveal>)}</div>
         </div>
       </section>
 
       <section className="bg-white px-5 py-20 sm:px-8 sm:py-24">
         <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-          <div><p className="text-sm font-medium text-[#245cff]">HOW POLREADY HELPS</p><h2 className="mt-2 text-3xl font-semibold leading-tight text-[#172856] sm:text-4xl">เปลี่ยนการอ่านแบบเดิม<br />ให้เป็นการฝึกที่วัดผลได้</h2><p className="mt-5 max-w-md leading-7 text-slate-500">เห็นภาพรวมของตัวเอง แล้วค่อยเลือกแบบฝึกที่เหมาะสม ไม่จำเป็นต้องเดาทิศทางการอ่านเพียงลำพัง</p><div className="mt-7 space-y-4">{['เลือกวิชาและหัวข้อย่อยได้ตามลำดับที่ต้องการ', 'เก็บผลการฝึกและกลับมาทบทวนได้ทุกเมื่อ', 'ใช้ได้ทั้งมือถือ แท็บเล็ต และคอมพิวเตอร์'].map((item) => <p key={item} className="flex items-start gap-2.5 text-sm text-[#172856]"><CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-500" /> {item}</p>)}</div></div>
-          <LearningFlow />
+          <Reveal><p className="text-sm font-medium text-[#245cff]">HOW POLREADY HELPS</p><h2 className="mt-2 text-3xl font-semibold leading-tight text-[#172856] sm:text-4xl">เปลี่ยนการอ่านแบบเดิม<br />ให้เป็นการฝึกที่วัดผลได้</h2><p className="mt-5 max-w-md leading-7 text-slate-500">เห็นภาพรวมของตัวเอง แล้วค่อยเลือกแบบฝึกที่เหมาะสม ไม่จำเป็นต้องเดาทิศทางการอ่านเพียงลำพัง</p><div className="mt-7 space-y-4">{['เลือกวิชาและหัวข้อย่อยได้ตามลำดับที่ต้องการ', 'เก็บผลการฝึกและกลับมาทบทวนได้ทุกเมื่อ', 'ใช้ได้ทั้งมือถือ แท็บเล็ต และคอมพิวเตอร์'].map((item) => <p key={item} className="flex items-start gap-2.5 text-sm text-[#172856]"><CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-500" /> {item}</p>)}</div></Reveal>
+          <Reveal delay={150}><LearningFlow /></Reveal>
+        </div>
+      </section>
+
+      <section className="bg-[#f7f9fc] px-5 py-20 sm:px-8 sm:py-24">
+        <div className="mx-auto max-w-6xl">
+          <Reveal><SectionHeading eyebrow="MORE WAYS TO PRACTICE" title="เครื่องมือฝึกครบชุด ไม่ใช่แค่ทำโจทย์" text="เสริมการจำและความเข้าใจด้วยเครื่องมือที่หลากหลาย เลือกฝึกได้ตามสไตล์ที่ถนัด" /></Reveal>
+          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{tools.map(({ icon: Icon, title, text }, index) => <Reveal key={title} delay={index * 90} as="article" className="rounded-2xl border border-slate-100 bg-white p-5 text-center shadow-sm transition hover:-translate-y-1 hover:shadow-lg hover:shadow-slate-200/60"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#eaf0ff] text-[#245cff]"><Icon size={25} /></span><h3 className="mt-5 text-sm font-semibold leading-6 text-[#172856]">{title}</h3><p className="mt-2 text-xs leading-5 text-slate-400">{text}</p></Reveal>)}</div>
         </div>
       </section>
 
       <section id="membership" className="bg-[#f7f9fc] px-5 py-20 sm:px-8 sm:py-24">
-        <div className="mx-auto max-w-6xl"><SectionHeading eyebrow="MEMBERSHIP" title="เลือกแพ็กเกจที่ใช่สำหรับคุณ" text="สมัครรายปีเพื่อปลดล็อกพื้นที่ฝึกและติดตามความก้าวหน้าของคุณ" />
-          <div className="mx-auto mt-10 grid max-w-4xl gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-            <article className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm"><p className="text-sm font-semibold text-[#172856]">เริ่มต้นใช้งาน</p><p className="mt-3 text-3xl font-semibold text-[#172856]">OTP ฟรี</p><p className="mt-2 text-sm leading-6 text-slate-500">สมัครและยืนยันเบอร์โทรศัพท์ก่อนเริ่มจัดแผนการฝึกของคุณ</p><Link href="/register" className="mt-7 inline-flex w-full items-center justify-center rounded-xl border border-[#172856] py-3 text-sm font-semibold text-[#172856] transition hover:bg-[#172856] hover:text-white">สมัครและทดลองทำข้อสอบ</Link></article>
-            <article className="relative overflow-hidden rounded-3xl border border-[#d3a950] bg-[#1c2b5a] p-7 text-white shadow-xl shadow-[#1c2b5a]/20"><span className="absolute right-6 top-0 rounded-b-xl bg-[#d3a950] px-3 py-1.5 text-xs font-semibold text-[#172856]">แพ็กเกจหลัก</span><p className="text-sm font-semibold text-[#e3bd69]">สมาชิก POLREADY รายปี</p><p className="mt-3 text-4xl font-semibold">฿1,290<span className="ml-1 text-base font-normal text-white/55">/ ปี</span></p><p className="mt-2 text-sm leading-6 text-white/65">ใช้สิทธิ์สมาชิก 365 วัน หลังผู้ดูแลตรวจสอบการชำระเงิน</p><div className="mt-6 grid gap-2 text-sm text-white/80 sm:grid-cols-2">{['แบบฝึกตามวิชาและหัวข้อ', 'Mock Exam และสถิติส่วนตัว', 'แฟลชการ์ดและแผนอ่านหนังสือ', 'อัปโหลดสลิปและติดตามสถานะ'].map((item) => <p key={item} className="flex items-center gap-2"><CheckCircle2 size={16} className="shrink-0 text-[#e3bd69]" /> {item}</p>)}</div><Link href="/register" className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#d3a950] py-3 text-sm font-semibold text-[#172856] transition hover:bg-[#e3bd69]">เริ่มสมัครสมาชิก <ArrowRight size={17} /></Link></article>
+        <div className="mx-auto max-w-6xl">
+          <Reveal><SectionHeading eyebrow="MEMBERSHIP" title="เลือกแพ็กเกจที่ใช่สำหรับคุณ" text="สมัครเพื่อปลดล็อกพื้นที่ฝึกและติดตามความก้าวหน้าของคุณ" /></Reveal>
+          <div className="mx-auto mt-10 grid max-w-5xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {plans.map((plan, index) => <Reveal key={plan.id} delay={index * 100}><PlanCard plan={plan} /></Reveal>)}
           </div>
         </div>
       </section>
 
-      <section className="bg-[#1c2b5a] px-5 py-20 text-center text-white sm:px-8 sm:py-24"><p className="text-sm font-medium text-[#e3bd69]">START TODAY</p><h2 className="mt-3 text-3xl font-semibold sm:text-4xl">เริ่มต้นฝึกอย่างมีเป้าหมาย</h2><p className="mx-auto mt-4 max-w-lg leading-7 text-white/65">เก็บทุกครั้งที่ฝึกให้กลายเป็นความมั่นใจก่อนวันสอบ</p><div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row"><Link href="/register" className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#d3a950] px-5 py-3.5 text-sm font-semibold text-[#172856] transition hover:bg-[#e3bd69]">สมัครใช้งานด้วย OTP <ArrowRight size={17} /></Link><a href="#membership" className="inline-flex items-center justify-center rounded-xl border border-white/30 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-white/10">ดูแพ็กเกจสมาชิก</a></div><p className="mt-5 text-xs text-white/40">การใช้งานถือว่ายอมรับเงื่อนไขการใช้งานและนโยบายความเป็นส่วนตัว</p></section>
+      <section className="bg-[#1c2b5a] px-5 py-20 text-center text-white sm:px-8 sm:py-24"><Reveal><p className="text-sm font-medium text-[#e3bd69]">START TODAY</p><h2 className="mt-3 text-3xl font-semibold sm:text-4xl">เริ่มต้นฝึกอย่างมีเป้าหมาย</h2><p className="mx-auto mt-4 max-w-lg leading-7 text-white/65">เก็บทุกครั้งที่ฝึกให้กลายเป็นความมั่นใจก่อนวันสอบ</p><div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row"><Link href="/register" className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#d3a950] px-5 py-3.5 text-sm font-semibold text-[#172856] transition hover:bg-[#e3bd69]">สมัครใช้งานด้วย OTP <ArrowRight size={17} /></Link><a href="#membership" className="inline-flex items-center justify-center rounded-xl border border-white/30 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-white/10">ดูแพ็กเกจสมาชิก</a></div><p className="mt-5 text-xs text-white/40">การใช้งานถือว่ายอมรับเงื่อนไขการใช้งานและนโยบายความเป็นส่วนตัว</p></Reveal></section>
 
       <Footer />
     </main>
@@ -125,6 +186,40 @@ function HeroPanel() {
 
 function OverviewCard({ label, value, note, color }) {
   return <div className="rounded-xl border border-slate-100 bg-[#fbfcff] p-3"><p className="text-[10px] text-slate-400">{label}</p><p className={`mt-1 text-lg font-semibold ${color}`}>{value}</p><p className="mt-1 text-[9px] leading-3 text-slate-400">{note}</p></div>;
+}
+
+function PlanCard({ plan }) {
+  const price = plan.price ? formatCurrency(plan.price) : 'ฟรี';
+  const suffix = planPriceSuffix(plan);
+
+  if (plan.isFeatured) {
+    return (
+      <article className="relative overflow-hidden rounded-3xl border border-[#d3a950] bg-[#1c2b5a] p-7 text-white shadow-xl shadow-[#1c2b5a]/20">
+        <span className="absolute right-6 top-0 rounded-b-xl bg-[#d3a950] px-3 py-1.5 text-xs font-semibold text-[#172856]">แพ็กเกจแนะนำ</span>
+        <p className="text-sm font-semibold text-[#e3bd69]">{plan.name}</p>
+        <p className="mt-3 text-4xl font-semibold">{price}{suffix && <span className="ml-1 text-base font-normal text-white/55">{suffix}</span>}</p>
+        <p className="mt-2 text-sm leading-6 text-white/65">{plan.description}</p>
+        <div className="mt-6 grid gap-2 text-sm text-white/80">
+          {plan.features.map((item) => <p key={item} className="flex items-center gap-2"><CheckCircle2 size={16} className="shrink-0 text-[#e3bd69]" /> {item}</p>)}
+        </div>
+        <Link href="/register" className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#d3a950] py-3 text-sm font-semibold text-[#172856] transition hover:bg-[#e3bd69]">เริ่มสมัครสมาชิก <ArrowRight size={17} /></Link>
+      </article>
+    );
+  }
+
+  return (
+    <article className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
+      <p className="text-sm font-semibold text-[#172856]">{plan.name}</p>
+      <p className="mt-3 text-3xl font-semibold text-[#172856]">{price}{suffix && <span className="ml-1 text-base font-normal text-slate-400">{suffix}</span>}</p>
+      <p className="mt-2 text-sm leading-6 text-slate-500">{plan.description}</p>
+      {plan.features?.length > 0 && (
+        <div className="mt-6 grid gap-2 text-sm text-[#172856]">
+          {plan.features.map((item) => <p key={item} className="flex items-center gap-2"><CheckCircle2 size={16} className="shrink-0 text-emerald-500" /> {item}</p>)}
+        </div>
+      )}
+      <Link href="/register" className="mt-7 inline-flex w-full items-center justify-center rounded-xl border border-[#172856] py-3 text-sm font-semibold text-[#172856] transition hover:bg-[#172856] hover:text-white">{plan.price ? 'เริ่มสมัครสมาชิก' : 'สมัครและทดลองทำข้อสอบ'}</Link>
+    </article>
+  );
 }
 
 function Metric({ value, label }) {

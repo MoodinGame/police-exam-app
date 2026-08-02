@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -15,7 +15,6 @@ import {
   UsersRound,
 } from 'lucide-react';
 import {
-  currentUserId,
   leaderboardBadges,
   leaderboardMonthly,
   leaderboardOverall,
@@ -89,35 +88,69 @@ function Avatar({ name, isMe = false }) {
   );
 }
 
-function PodiumCard({ entry }) {
+function PodiumCard({ entry, currentUserId }) {
   const isMe = entry.userId === currentUserId;
-  const rankSize = entry.rank === 1 ? 'md:-mt-5' : '';
+  const isWinner = entry.rank === 1;
 
   return (
-    <div className={`relative flex min-w-[170px] flex-1 flex-col items-center rounded-2xl border p-4 text-center shadow-sm ${rankSize} ${isMe ? 'border-accent-cyan/40 bg-cyan-50/70' : 'border-white/20 bg-white/10'}`}>
+    <article className={`relative flex min-w-0 flex-col items-center rounded-2xl border px-3 pb-4 pt-6 text-center shadow-sm transition ${isWinner ? 'z-10 -mt-3 border-amber-300 bg-gradient-to-b from-amber-50 to-white shadow-lg shadow-amber-500/10 sm:-mt-6' : 'border-graylight/25 bg-white hover:-translate-y-0.5'} ${isMe ? 'ring-2 ring-accent-cyan/25' : ''}`}>
       <span className="absolute -top-4"><RankMark rank={entry.rank} /></span>
-      <div className="mt-5"><Avatar name={entry.name} isMe={isMe} /></div>
-      <p className="mt-2 max-w-full truncate text-sm font-bold text-white">{entry.name}</p>
-      <div className="mt-2"><BadgePill badgeId={entry.badge} compact /></div>
-      <p className="mt-3 text-2xl font-black text-accent-gold">{entry.score}<span className="ml-1 text-xs font-medium text-white/65">คะแนน</span></p>
-    </div>
+      <Avatar name={entry.name} isMe={isMe} />
+      <p className="mt-2 w-full truncate text-sm font-black text-navy">{entry.name}</p>
+      <div className="mt-2 max-w-full"><BadgePill badgeId={entry.badge} compact /></div>
+      <div className="mt-3 border-t border-navy/5 pt-3"><p className="text-2xl font-black text-navy">{entry.score}</p><p className="mt-0.5 text-[11px] text-graydark/45">คะแนนสะสม</p></div>
+    </article>
   );
 }
 
 export default function LeaderboardPage() {
   const [periodId, setPeriodId] = useState('overall');
   const [view, setView] = useState('table');
+  const [entries, setEntries] = useState([]);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [loaded, setLoaded] = useState(false);
   const activePeriod = PERIODS.find((period) => period.id === periodId) || PERIODS[0];
-  const ranked = useMemo(() => withRank(activePeriod.data), [activePeriod]);
+  const sourceEntries = loaded ? entries : activePeriod.data;
+  const ranked = useMemo(() => withRank(sourceEntries), [sourceEntries]);
   const me = ranked.find((entry) => entry.userId === currentUserId);
-  const podium = ranked.slice(0, 3).sort((a, b) => (a.rank === 1 ? 0 : b.rank === 1 ? 1 : a.rank - b.rank));
+  const podium = [
+    ranked.find((entry) => entry.rank === 2),
+    ranked.find((entry) => entry.rank === 1),
+    ranked.find((entry) => entry.rank === 3),
+  ].filter(Boolean);
+
+  useEffect(() => {
+    let active = true;
+    async function loadLeaderboard() {
+      setLoaded(false);
+      try {
+        const response = await fetch(`/api/leaderboard?period=${periodId}`, { cache: 'no-store' });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Unable to load leaderboard');
+        if (!active) return;
+        setEntries(payload.entries || []);
+        setCurrentUserId(payload.currentUserId || null);
+        setLoaded(true);
+      } catch {
+        if (active) {
+          setEntries([]);
+          setCurrentUserId(null);
+          setLoaded(false);
+        }
+      }
+    }
+    loadLeaderboard();
+    return () => {
+      active = false;
+    };
+  }, [periodId]);
 
   return (
     <div className="space-y-6 pb-4">
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-navy via-[#183560] to-[#1f6b83] px-5 py-7 text-white shadow-xl shadow-navy/15 sm:px-8">
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-navy via-[#183560] to-[#20566e] px-5 py-6 text-white shadow-xl shadow-navy/15 sm:px-8 sm:py-7">
         <div className="pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full bg-accent-cyan/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-20 left-1/3 h-40 w-40 rounded-full bg-accent-gold/20 blur-3xl" />
-        <div className="relative flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-cyan-100">
               <Trophy size={14} className="text-accent-gold" />
@@ -126,12 +159,12 @@ export default function LeaderboardPage() {
             <h1 className="text-3xl font-black tracking-tight sm:text-4xl">อันดับของผู้เตรียมสอบ</h1>
             <p className="mt-2 max-w-xl text-sm leading-6 text-white/70">เปรียบเทียบผลการฝึกของคุณกับผู้ใช้อื่น และสะสมเหรียญจากการฝึกอย่างต่อเนื่อง</p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 backdrop-blur-sm">
+          <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-sm">
+            <div className="border-r border-white/10 px-4 py-3.5">
               <p className="text-xs text-white/60">ผู้ร่วมจัดอันดับ</p>
               <p className="mt-1 flex items-center gap-2 text-xl font-black"><UsersRound size={18} className="text-accent-cyan" />{ranked.length} คน</p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 backdrop-blur-sm">
+            <div className="px-4 py-3.5">
               <p className="text-xs text-white/60">อันดับของคุณ</p>
               <p className="mt-1 text-xl font-black text-accent-gold">{me ? `#${me.rank}` : '—'}</p>
             </div>
@@ -139,55 +172,55 @@ export default function LeaderboardPage() {
         </div>
       </section>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h2 className="app-section-heading">จัดอันดับตามช่วงเวลา</h2>
-          <p className="mt-1 text-sm text-graydark/55">คะแนนสูงกว่าอยู่ในอันดับที่ดีกว่า หากคะแนนเท่ากัน ผู้ที่ใช้จำนวนครั้งฝึกน้อยกว่าจะอยู่ก่อน</p>
+      <section className="app-card flex flex-col gap-4 p-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-1 gap-1 overflow-x-auto rounded-xl bg-slate-50 p-1" role="tablist" aria-label="ช่วงเวลาของอันดับ">
+          {PERIODS.map((period) => (
+            <button
+              key={period.id}
+              onClick={() => setPeriodId(period.id)}
+              className={`min-w-[116px] flex-1 rounded-lg px-3 py-2 text-left transition ${periodId === period.id ? 'bg-white text-navy shadow-sm ring-1 ring-navy/5' : 'text-graydark/55 hover:bg-white/70'}`}
+              role="tab"
+              aria-selected={periodId === period.id}
+            >
+              <span className="block text-sm font-bold">{period.label}</span>
+              <span className="mt-0.5 block text-[11px] opacity-65">{period.helper}</span>
+            </button>
+          ))}
         </div>
-        <div className="flex w-full rounded-2xl border border-graylight/30 bg-white p-1.5 shadow-sm lg:w-auto">
+        <div className="flex shrink-0 rounded-xl bg-slate-50 p-1">
           <button
             onClick={() => setView('table')}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition sm:flex-none ${view === 'table' ? 'bg-navy text-white shadow-sm' : 'text-graydark/55 hover:bg-navy/5'}`}
+            className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${view === 'table' ? 'bg-navy text-white shadow-sm' : 'text-graydark/55 hover:bg-white'}`}
             aria-pressed={view === 'table'}
           >
             <Table2 size={16} /> ตาราง
           </button>
           <button
             onClick={() => setView('cards')}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition sm:flex-none ${view === 'cards' ? 'bg-navy text-white shadow-sm' : 'text-graydark/55 hover:bg-navy/5'}`}
+            className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${view === 'cards' ? 'bg-navy text-white shadow-sm' : 'text-graydark/55 hover:bg-white'}`}
             aria-pressed={view === 'cards'}
           >
             <LayoutGrid size={16} /> การ์ด
           </button>
         </div>
-      </div>
+      </section>
 
-      <div className="flex flex-wrap gap-2">
-        {PERIODS.map((period) => (
-          <button
-            key={period.id}
-            onClick={() => setPeriodId(period.id)}
-            className={`rounded-2xl border px-4 py-2.5 text-left transition ${periodId === period.id ? 'border-accent-cyan bg-cyan-50 text-navy shadow-sm' : 'border-graylight/30 bg-white text-graydark/60 hover:border-accent-cyan/45'}`}
-          >
-            <span className="block text-sm font-bold">{period.label}</span>
-            <span className="block text-xs opacity-65">{period.helper}</span>
-          </button>
-        ))}
-      </div>
-
-      <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-[#11284b] to-[#1d4f6a] p-5 shadow-xl shadow-navy/10 sm:p-7">
-        <div className="mb-8 flex items-center gap-2 text-white">
-          <Crown size={19} className="text-accent-gold" fill="currentColor" />
-          <h2 className="font-bold">ผู้นำคะแนน {activePeriod.label}</h2>
+      <section className="relative overflow-hidden rounded-3xl border border-amber-100 bg-[radial-gradient(circle_at_50%_0%,rgba(216,176,107,0.2),transparent_33%),linear-gradient(180deg,#fffdf8_0%,#f8fbfd_100%)] p-5 shadow-[0_14px_30px_rgba(43,45,66,0.06)] sm:p-7">
+        <div className="mb-8 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-navy">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-700"><Crown size={19} fill="currentColor" /></span>
+            <div><h2 className="font-bold">ผู้นำคะแนน {activePeriod.label}</h2><p className="mt-0.5 text-xs text-graydark/45">3 อันดับแรกของช่วงเวลานี้</p></div>
+          </div>
+          <span className="hidden rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 sm:inline-flex">อัปเดตตามผลการฝึก</span>
         </div>
-        <div className="flex flex-col gap-5 md:flex-row md:items-end">
-          {podium.map((entry) => <PodiumCard key={entry.userId} entry={entry} />)}
+        <div className="grid grid-cols-3 items-end gap-2 pt-2 sm:gap-5">
+          {podium.map((entry) => <PodiumCard key={entry.userId} entry={entry} currentUserId={currentUserId} />)}
         </div>
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
         <section className="app-card overflow-hidden p-0">
-          <div className="flex items-center justify-between border-b border-graylight/20 px-5 py-4 sm:px-6">
+          <div className="flex items-center justify-between border-b border-graylight/20 bg-slate-50/70 px-5 py-4 sm:px-6">
             <div>
               <h2 className="font-bold text-navy">ตารางจัดอันดับ</h2>
               <p className="mt-0.5 text-xs text-graydark/45">{activePeriod.helper}</p>
@@ -212,8 +245,8 @@ export default function LeaderboardPage() {
                     const isMe = entry.userId === currentUserId;
                     return (
                       <tr key={entry.userId} className={`transition hover:bg-slate-50/80 ${isMe ? 'bg-cyan-50/75' : ''}`}>
-                        <td className="px-5 py-3.5 sm:px-6"><RankMark rank={entry.rank} /></td>
-                        <td className="px-3 py-3.5">
+                        <td className="px-5 py-4 sm:px-6"><RankMark rank={entry.rank} /></td>
+                        <td className="px-3 py-4">
                           <div className="flex items-center gap-3">
                             <Avatar name={entry.name} isMe={isMe} />
                             <div>
@@ -222,9 +255,9 @@ export default function LeaderboardPage() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-3 py-3.5"><BadgePill badgeId={entry.badge} /></td>
-                        <td className="px-3 py-3.5 text-center"><Movement value={entry.movement} /></td>
-                        <td className="px-5 py-3.5 text-right sm:px-6"><p className="text-lg font-black text-navy">{entry.score}</p><p className="text-xs text-graydark/45">คะแนน</p></td>
+                        <td className="px-3 py-4"><BadgePill badgeId={entry.badge} /></td>
+                        <td className="px-3 py-4 text-center"><Movement value={entry.movement} /></td>
+                        <td className="px-5 py-4 text-right sm:px-6"><p className="text-lg font-black text-navy">{entry.score}</p><p className="text-xs text-graydark/45">คะแนน</p></td>
                       </tr>
                     );
                   })}
@@ -248,15 +281,16 @@ export default function LeaderboardPage() {
         </section>
 
         <aside className="space-y-4">
-          <section className="app-card border-accent-cyan/20 bg-gradient-to-br from-cyan-50 to-white">
-            <div className="flex items-center gap-2 text-navy"><Trophy size={19} className="text-accent-gold" /><h2 className="font-bold">อันดับของคุณ</h2></div>
+          <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-navy to-[#24556d] p-6 text-white shadow-lg shadow-navy/10">
+            <div className="flex items-center gap-2"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-accent-gold"><Trophy size={19} /></span><div><p className="text-xs text-white/60">อันดับของคุณ</p><h2 className="font-bold">ผลการฝึก {activePeriod.label}</h2></div></div>
             {me ? (
               <>
-                <div className="mt-5 flex items-end justify-between"><p className="text-5xl font-black text-navy">#{me.rank}</p><Movement value={me.movement} /></div>
-                <p className="mt-2 text-sm text-graydark/55">{me.score} คะแนน จากการฝึก {me.attempts} ครั้ง</p>
+                <div className="mt-6 flex items-end justify-between"><p className="text-5xl font-black text-accent-gold">#{me.rank}</p><span className="rounded-full bg-emerald-400/15 px-2.5 py-1 text-xs font-semibold text-emerald-200"><Movement value={me.movement} /></span></div>
+                <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-accent-gold" style={{ width: `${Math.min(100, Math.round((me.score / (ranked[0]?.score || 1)) * 100))}%` }} /></div>
+                <p className="mt-3 text-sm text-white/70">{me.score} คะแนน จากการฝึก {me.attempts} ครั้ง</p>
                 <div className="mt-4"><BadgePill badgeId={me.badge} /></div>
               </>
-            ) : <p className="mt-4 text-sm text-graydark/55">ยังไม่มีผลการฝึกในช่วงเวลานี้</p>}
+            ) : <p className="mt-4 text-sm text-white/65">ยังไม่มีผลการฝึกในช่วงเวลานี้</p>}
           </section>
 
           <section className="app-card">
@@ -265,7 +299,7 @@ export default function LeaderboardPage() {
             <div className="mt-4 flex items-center gap-2 rounded-xl bg-violet-50 p-3 text-xs text-violet-700"><Sparkles size={15} /> ดูรายละเอียดเหรียญทั้งหมดได้ในหน้าโปรไฟล์</div>
           </section>
 
-          <p className="px-2 text-xs leading-5 text-graydark/40">ข้อมูลอันดับในหน้านี้เป็นข้อมูลตัวอย่างสำหรับทดสอบหน้าจอ จะแสดงคะแนนจริงเมื่อเชื่อมระบบบันทึกผลกับฐานข้อมูลแล้ว</p>
+          <p className="px-2 text-xs leading-5 text-graydark/40">อันดับคำนวณจากผลข้อสอบที่บันทึกในบัญชีผู้ใช้ และจะอัปเดตหลังส่งคำตอบของแต่ละชุด</p>
         </aside>
       </div>
     </div>

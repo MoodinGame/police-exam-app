@@ -4,11 +4,20 @@
 
 body {
   @apply bg-[#f7f9fc] text-graydark font-prompt antialiased;
+  background-image:
+    radial-gradient(circle at 3% 0%, rgba(0, 180, 216, 0.08), transparent 26rem),
+    radial-gradient(circle at 96% 12%, rgba(216, 176, 107, 0.1), transparent 25rem);
 }
 
 ::selection {
   background: rgba(0, 180, 216, 0.2);
   color: #2B2D42;
+}
+
+.no-copy {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 @layer components {
@@ -49,11 +58,13 @@ body {
   }
 
   .app-card {
-    @apply rounded-2xl border border-graylight/25 bg-white/90 shadow-[0_12px_30px_rgba(43,45,66,0.07)] backdrop-blur-sm;
+    @apply min-w-0 rounded-2xl border border-graylight/25 bg-white/90 shadow-[0_12px_30px_rgba(43,45,66,0.07)] backdrop-blur-sm;
+    box-shadow: 0 12px 30px rgba(43, 45, 66, 0.07), 0 2px 0 rgba(255, 255, 255, 0.8) inset;
   }
 
   .app-card-hover {
     @apply transition duration-300 ease-out hover:-translate-y-1 hover:border-accent-cyan/45 hover:shadow-[0_18px_42px_rgba(43,45,66,0.13)];
+    will-change: transform, box-shadow;
   }
 
   .app-section-heading {
@@ -61,11 +72,11 @@ body {
   }
 
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-accent-cyan to-[#159fc7] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(0,180,216,0.24)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_22px_rgba(0,180,216,0.32)] active:translate-y-0;
+    @apply inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-accent-cyan via-[#12abd1] to-[#168bb4] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(0,180,216,0.24)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_22px_rgba(0,180,216,0.32)] active:translate-y-0;
   }
 
   .btn-navy {
-    @apply inline-flex items-center justify-center rounded-xl bg-navy px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(43,45,66,0.2)] transition duration-200 hover:-translate-y-0.5 hover:bg-navy/90 hover:shadow-[0_12px_22px_rgba(43,45,66,0.28)] active:translate-y-0;
+    @apply inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-navy via-[#30365e] to-[#202b52] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(43,45,66,0.2)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_12px_22px_rgba(43,45,66,0.28)] active:translate-y-0;
   }
 
   .animate-enter {
@@ -75,6 +86,129 @@ body {
   .animate-float {
     animation: float 4.5s ease-in-out infinite;
   }
+}
+
+.swal-action-confirm,
+.swal-action-cancel {
+  border: 0;
+  border-radius: 0.85rem;
+  padding: 0.75rem 1.05rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.swal-action-confirm {
+  background: linear-gradient(135deg, #202b52, #343b67);
+  box-shadow: 0 8px 18px rgba(32, 43, 82, 0.22);
+  color: white;
+}
+
+.swal-action-confirm:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(32, 43, 82, 0.3);
+}
+
+.swal-action-cancel {
+  background: #f1f4f8;
+  color: #526075;
+}
+
+.swal-action-cancel:hover {
+  background: #e6ebf2;
+}
+
+.swal-update-list {
+  display: grid;
+  gap: 0.7rem;
+  text-align: left;
+}
+
+.swal-update-popup {
+  overflow: hidden;
+  border-color: rgba(125, 211, 252, 0.7);
+  background:
+    radial-gradient(circle at 96% 0%, rgba(34, 211, 238, 0.18), transparent 33%),
+    radial-gradient(circle at 0% 100%, rgba(99, 102, 241, 0.14), transparent 36%),
+    linear-gradient(145deg, #ffffff 8%, #f2faff 56%, #f5f3ff 100%);
+}
+
+.swal-update-title {
+  background: linear-gradient(100deg, #172856 5%, #166f9a 52%, #2563eb 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.swal-update-item {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  border-radius: 0.9rem;
+  padding: 0.8rem;
+}
+
+.swal-update-item-ready {
+  border: 1px solid rgba(74, 222, 128, 0.46);
+  background: linear-gradient(120deg, rgba(240, 253, 244, 0.95), rgba(236, 253, 245, 0.78));
+}
+
+.swal-update-item-progress {
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: linear-gradient(120deg, rgba(240, 249, 255, 0.96), rgba(238, 242, 255, 0.88));
+}
+
+.swal-update-icon {
+  display: inline-flex;
+  height: 1.5rem;
+  width: 1.5rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.swal-update-item-ready .swal-update-icon {
+  background: #22c55e;
+  color: white;
+}
+
+.swal-update-item-progress .swal-update-icon {
+  background: #0ea5e9;
+  color: white;
+}
+
+.swal-update-item strong {
+  display: block;
+  color: #202b52;
+}
+
+.swal-update-item p {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.swal-update-note {
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 0.75rem;
+  background: linear-gradient(115deg, #fff8e8, #fff1d2);
+  padding: 0.65rem 0.8rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: #806120;
+}
+
+.swal-update-confirm {
+  background: linear-gradient(115deg, #00b4d8 0%, #2563eb 52%, #4338ca 100%);
+  box-shadow: 0 9px 20px rgba(37, 99, 235, 0.28);
+}
+
+.swal-update-confirm:hover {
+  box-shadow: 0 13px 25px rgba(37, 99, 235, 0.34);
 }
 
 @keyframes enter {

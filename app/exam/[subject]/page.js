@@ -1,22 +1,17 @@
 import Link from 'next/link';
 import { LogIn, LockKeyhole } from 'lucide-react';
 import { topics } from '@/lib/topics';
-import { isFreePracticeTopic, hasActiveMembership } from '@/lib/entitlements';
+import { isFreePracticeTopic } from '@/lib/entitlements';
+import { canUseArea, getUserAccess } from '@/lib/serverAccess';
 import { requireCurrentUser } from '@/lib/serverUser';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import ExamClient from './ExamClient';
 
 export const dynamic = 'force-dynamic';
 
-async function getMembershipForCurrentUser() {
+async function getAccessForCurrentUser() {
   const user = await requireCurrentUser();
-  const { data, error } = await getSupabaseAdmin()
-    .from('memberships')
-    .select('status, expires_at')
-    .eq('user_id', user.id)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
+  return getUserAccess(getSupabaseAdmin(), user.id);
 }
 
 export default async function ExamPage({ params, searchParams }) {
@@ -25,13 +20,14 @@ export default async function ExamPage({ params, searchParams }) {
     : null;
 
   try {
-    const membership = await getMembershipForCurrentUser();
-    const isMember = hasActiveMembership(membership);
+    const access = await getAccessForCurrentUser();
+    const isMember = canUseArea(access, 'practice');
     const isFreeTrial = Boolean(topic && isFreePracticeTopic(topic.id));
+    const hasDirectSet = Boolean(searchParams?.set);
 
     // Opening a whole subject can expose several sets at once, so it is a
     // member-only route. A trial user must start from one of the six topics.
-    if (!isMember && !isFreeTrial) return <MembershipRequired />;
+    if (!isMember && !isFreeTrial && !hasDirectSet) return <MembershipRequired />;
     return <ExamClient />;
   } catch (error) {
     if (error?.status === 401) return <LoginRequired />;

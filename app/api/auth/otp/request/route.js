@@ -15,7 +15,7 @@ import { ensureRegistrationSchema, findUserByPhone } from '@/lib/serverUser';
 
 export const runtime = 'nodejs';
 
-const RATE_WINDOW_MS = 10 * 60 * 1000;
+const RATE_WINDOW_MS = 20 * 60 * 1000;
 const MAX_REQUESTS_PER_WINDOW = 3;
 const rateLimits = new Map();
 
@@ -116,7 +116,7 @@ export async function POST(request) {
   const rateKey = `${forwarded}:${phone}`;
   const requestedAt = canRequestOtp(rateKey);
   if (!requestedAt) {
-    return NextResponse.json({ error: 'ขอรหัสมากเกินไป กรุณารอ 10 นาทีแล้วลองใหม่' }, { status: 429 });
+    return NextResponse.json({ error: 'ขอรหัสมากเกินไป กรุณารอ 20 นาทีแล้วลองใหม่' }, { status: 429 });
   }
 
   const challenge = createOtpChallenge(phone, registration);

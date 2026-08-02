@@ -11,14 +11,16 @@ const RADAR_RADIUS = 82;
 const RADAR_LABELS = {
   it: 'คอมพิวเตอร์',
   correspondence: 'งานสารบรรณ',
+  'police-correspondence': 'สารบรรณตำรวจ',
   law: 'กฎหมาย',
   aptitude: 'คณิตศาสตร์',
   thai: 'ภาษาไทย',
   english: 'ภาษาอังกฤษ',
+  social: 'สังคม',
 };
 
 function polarPoint(index, radius) {
-  const angle = (-90 + index * 60) * (Math.PI / 180);
+  const angle = (-90 + index * (360 / subjects.length)) * (Math.PI / 180);
   return {
     x: RADAR_CENTER + Math.cos(angle) * radius,
     y: RADAR_CENTER + Math.sin(angle) * radius,
@@ -139,7 +141,7 @@ export default function ProfileHero({ subjectAccuracy }) {
           <a href="#stats-overview" className="inline-flex items-center justify-center gap-2 rounded-xl border border-graylight/25 bg-white px-3 py-2.5 text-sm font-semibold text-navy shadow-sm transition hover:-translate-y-0.5 hover:border-accent-cyan hover:shadow-md"><BarChart3 size={16} />สถิติ</a>
           <a href="#achievements" className="inline-flex items-center justify-center gap-2 rounded-xl border border-graylight/25 bg-white px-3 py-2.5 text-sm font-semibold text-navy shadow-sm transition hover:-translate-y-0.5 hover:border-amber-400 hover:bg-amber-50 hover:shadow-md"><Trophy size={16} />ความสำเร็จ</a>
           <Link href="/account" className="inline-flex items-center justify-center gap-2 rounded-xl border border-graylight/25 bg-white px-3 py-2.5 text-sm font-semibold text-navy shadow-sm transition hover:-translate-y-0.5 hover:border-accent-cyan hover:shadow-md"><Sparkles size={16} />แพ็กเกจสมาชิก</Link>
-          <Link href="/account#profile-editor" className="inline-flex items-center justify-center gap-2 rounded-xl border border-graylight/25 bg-white px-3 py-2.5 text-sm font-semibold text-navy shadow-sm transition hover:-translate-y-0.5 hover:border-accent-cyan hover:shadow-md"><Settings size={16} />ตั้งค่า</Link>
+          <Link href="/settings" className="inline-flex items-center justify-center gap-2 rounded-xl border border-graylight/25 bg-white px-3 py-2.5 text-sm font-semibold text-navy shadow-sm transition hover:-translate-y-0.5 hover:border-accent-cyan hover:shadow-md"><Settings size={16} />แก้ไขโปรไฟล์</Link>
         </div>
       </div>
     </section>

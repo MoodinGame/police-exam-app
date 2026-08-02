@@ -2,8 +2,10 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, CircleAlert, Clock3, FileImage, LoaderCircle, LogIn, Save, ShieldCheck, XCircle } from 'lucide-react';
+import { CheckCircle2, CircleAlert, Clock3, FileImage, LoaderCircle, LogIn, QrCode, Save, ShieldCheck, Trash2, XCircle } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/membership';
+
+const MAX_QR_SIZE = 2 * 1024 * 1024;
 
 const FILTERS = [
   { id: 'pending', label: 'รอตรวจ' },
@@ -22,6 +24,7 @@ export default function AdminPaymentsPage() {
   const [account, setAccount] = useState(emptyAccount);
   const [loading, setLoading] = useState(true);
   const [savingAccount, setSavingAccount] = useState(false);
+  const [uploadingQr, setUploadingQr] = useState(false);
   const [reviewingId, setReviewingId] = useState(null);
   const [error, setError] = useState('');
   const [accessError, setAccessError] = useState('');
@@ -94,6 +97,48 @@ export default function AdminPaymentsPage() {
     }
   };
 
+  const uploadQr = async (file) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('รองรับเฉพาะไฟล์รูปภาพ JPG, PNG หรือ WEBP');
+      return;
+    }
+    if (file.size > MAX_QR_SIZE) {
+      setError('ไฟล์ QR code ต้องมีขนาดไม่เกิน 2 MB');
+      return;
+    }
+    setUploadingQr(true);
+    setError('');
+    try {
+      const data = new FormData();
+      data.append('qr', file);
+      const response = await fetch('/api/admin/payment-account/qr', { method: 'POST', body: data });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'ไม่สามารถอัปโหลด QR code ได้');
+      setAccount(result.paymentAccount);
+      setNotice('อัปโหลด QR code เรียบร้อยแล้ว');
+    } catch (uploadError) {
+      setError(uploadError.message || 'ไม่สามารถอัปโหลด QR code ได้');
+    } finally {
+      setUploadingQr(false);
+    }
+  };
+
+  const removeQr = async () => {
+    setUploadingQr(true);
+    setError('');
+    try {
+      const response = await fetch('/api/admin/payment-account/qr', { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'ไม่สามารถลบ QR code ได้');
+      setAccount(result.paymentAccount);
+      setNotice('ลบ QR code แล้ว');
+    } catch (removeError) {
+      setError(removeError.message || 'ไม่สามารถลบ QR code ได้');
+    } finally {
+      setUploadingQr(false);
+    }
+  };
+
   if (accessError) return <AccessDenied message={accessError} />;
 
   return (
@@ -108,12 +153,30 @@ export default function AdminPaymentsPage() {
 
       <section className="border border-graylight/25 rounded-2xl p-5 sm:p-6 mb-6">
         <div className="flex items-center gap-3 mb-5"><div className="w-10 h-10 rounded-xl bg-accent-cyan/10 text-accent-cyan flex items-center justify-center"><Save size={20} /></div><div><h2 className="font-semibold text-navy">บัญชีรับโอน</h2><p className="text-xs text-graydark/50">จะแสดงให้สมาชิกที่เข้าสู่ระบบเท่านั้น</p></div></div>
-        <form onSubmit={saveAccount} className="grid md:grid-cols-[1fr_1fr_0.8fr_auto] gap-3 items-end">
-          <label className="text-sm text-graydark">ธนาคาร<input value={account.bankName} onChange={(event) => setAccount((current) => ({ ...current, bankName: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-graylight/35 px-3 py-2.5 outline-none focus:border-accent-cyan" /></label>
-          <label className="text-sm text-graydark">ชื่อบัญชี<input value={account.accountName} onChange={(event) => setAccount((current) => ({ ...current, accountName: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-graylight/35 px-3 py-2.5 outline-none focus:border-accent-cyan" /></label>
-          <label className="text-sm text-graydark">เลขบัญชี<input value={account.accountNumber} onChange={(event) => setAccount((current) => ({ ...current, accountNumber: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-graylight/35 px-3 py-2.5 outline-none focus:border-accent-cyan" /></label>
-          <button type="submit" disabled={savingAccount} className="rounded-xl bg-navy text-white px-4 py-2.5 text-sm font-medium disabled:opacity-60 inline-flex items-center justify-center gap-2">{savingAccount && <LoaderCircle size={16} className="animate-spin" />}บันทึก</button>
-        </form>
+        <div className="grid gap-5 lg:grid-cols-[1fr_auto]">
+          <form onSubmit={saveAccount} className="grid sm:grid-cols-3 gap-3 items-end">
+            <label className="text-sm text-graydark">ธนาคาร<input value={account.bankName} onChange={(event) => setAccount((current) => ({ ...current, bankName: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-graylight/35 px-3 py-2.5 outline-none focus:border-accent-cyan" /></label>
+            <label className="text-sm text-graydark">ชื่อบัญชี<input value={account.accountName} onChange={(event) => setAccount((current) => ({ ...current, accountName: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-graylight/35 px-3 py-2.5 outline-none focus:border-accent-cyan" /></label>
+            <label className="text-sm text-graydark">เลขบัญชี<input value={account.accountNumber} onChange={(event) => setAccount((current) => ({ ...current, accountNumber: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-graylight/35 px-3 py-2.5 outline-none focus:border-accent-cyan" /></label>
+            <button type="submit" disabled={savingAccount} className="sm:col-span-3 rounded-xl bg-navy text-white px-4 py-2.5 text-sm font-medium disabled:opacity-60 inline-flex items-center justify-center gap-2 sm:w-fit">{savingAccount && <LoaderCircle size={16} className="animate-spin" />}บันทึก</button>
+          </form>
+          <div className="shrink-0">
+            <p className="text-sm text-graydark mb-1.5">QR code รับโอน</p>
+            {account.qrCodeUrl ? (
+              <div className="relative w-40">
+                <img src={account.qrCodeUrl} alt="QR code รับโอน" className="w-40 h-40 rounded-xl border border-graylight/25 object-contain bg-white" />
+                <button type="button" disabled={uploadingQr} onClick={removeQr} className="absolute -right-2 -top-2 rounded-full bg-white border border-graylight/30 p-1.5 text-red-500 shadow-sm hover:bg-red-50 disabled:opacity-60" aria-label="ลบ QR code">
+                  {uploadingQr ? <LoaderCircle size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                </button>
+              </div>
+            ) : (
+              <label className="flex w-40 h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-graylight/40 text-center text-graydark/55 hover:border-accent-cyan/60 hover:bg-accent-cyan/[0.02]">
+                {uploadingQr ? <LoaderCircle size={22} className="animate-spin text-accent-cyan" /> : <><QrCode size={22} className="text-accent-cyan" /><span className="text-xs px-2">อัปโหลด QR code</span></>}
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={uploadingQr} onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadQr(file); event.target.value = ''; }} />
+              </label>
+            )}
+          </div>
+        </div>
       </section>
 
       <section className="grid sm:grid-cols-3 gap-4 mb-6">

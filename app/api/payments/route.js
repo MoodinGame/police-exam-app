@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
 import { apiErrorResponse, requireCurrentUser } from '@/lib/serverUser';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getPaidMembershipPlan } from '@/lib/membership';
+import { getMembershipPlan } from '@/lib/serverAccess';
 
 export const runtime = 'nodejs';
 
@@ -38,9 +38,9 @@ export async function POST(request) {
     const payerName = String(formData.get('payerName') || '').trim();
     const paidAt = String(formData.get('paidAt') || '');
     const file = formData.get('slip');
-    const plan = getPaidMembershipPlan(String(formData.get('planId') || ''));
+    const plan = await getMembershipPlan(supabase, String(formData.get('planId') || ''));
 
-    if (!plan) throw requestError('แพ็กเกจที่เลือกยังไม่พร้อมชำระเงิน');
+    if (!plan?.isActive || !plan.paymentEnabled || plan.grantType !== 'membership' || plan.price <= 0) throw requestError('แพ็กเกจที่เลือกยังไม่พร้อมชำระเงิน');
     if (payerName.length < 2 || payerName.length > 120) throw requestError('กรุณากรอกชื่อผู้โอน 2–120 ตัวอักษร');
     if (!validPaidAt(paidAt)) throw requestError('กรุณาระบุวันที่โอนให้ถูกต้อง');
     if (!file || typeof file.arrayBuffer !== 'function') throw requestError('กรุณาแนบรูปสลิป');
@@ -73,7 +73,7 @@ export async function POST(request) {
         user_id: user.id,
         plan_id: plan.id,
         plan_name: plan.name,
-        amount: plan.amount,
+        amount: plan.price,
         payer_name: payerName,
         paid_at: paidAt,
         storage_path: storagePath,

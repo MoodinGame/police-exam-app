@@ -3,13 +3,15 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Search, X, AlertCircle, Sparkles, Check, Lock } from 'lucide-react';
-import { subjects, totalQuestions } from '@/lib/subjects';
+import { subjects } from '@/lib/subjects';
 import { topics, topicsBySubject } from '@/lib/topics';
 import { subjectStyles } from '@/lib/subjectStyles';
 import { getSubjectProgress, getTopicProgress, getWrongBySubject } from '@/lib/progress';
 import { isFreePracticeTopic } from '@/lib/entitlements';
 import { useMembershipStatus } from '@/lib/useMembershipStatus';
+import { useExamCatalog } from '@/lib/useExamCatalog';
 import PracticeFilter, { EMPTY_FILTER } from '@/components/PracticeFilter';
+import PublishedExamSetCard from '@/components/PublishedExamSetCard';
 import ResumeBanner from '@/components/ResumeBanner';
 
 const PASS_PCT = 60;
@@ -17,8 +19,6 @@ const PASS_PCT = 60;
 function SubjectCard({ subject, progress }) {
   const style = subjectStyles[subject.id];
   const Icon = style.icon;
-  const subjectTopics = topicsBySubject(subject.id);
-
   const progressPct = progress?.progressPct ?? 0;
   const accuracyPct = progress?.accuracyPct ?? null;
 
@@ -32,9 +32,7 @@ function SubjectCard({ subject, progress }) {
       </div>
       <h3 className="text-lg font-semibold mb-1">{subject.name}</h3>
       <p className="text-sm text-white/75 mb-4 leading-relaxed">{subject.description}</p>
-      <p className="text-xs text-white/70 mb-3">
-        {subjectTopics.length} ชุด · {subject.count} ข้อ
-      </p>
+      <p className="text-xs text-white/70 mb-3">เลือกหมวดเพื่อเริ่มทำแบบฝึกหัด</p>
 
       <div className="mt-auto">
         <div className="flex items-center justify-between text-xs text-white/70 mb-1">
@@ -88,8 +86,7 @@ function SetCard({ topic, attempt, isMember, isLoggedIn, accessLoading }) {
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex flex-wrap items-center gap-1.5 mb-3"><span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${style.chip}`}>{style.short}</span>{topic.available && isFreeTrial && <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700"><Sparkles size={9} /> ทดลองฟรี</span>}{topic.available && !isFreeTrial && !isMember && !accessLoading && <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700"><Lock size={9} /> สมาชิก</span>}</div>
         <h3 className="font-medium text-graydark leading-snug mb-1">{topic.name}</h3>
-        <p className="text-xs text-graydark/50 mb-1">วิชา: {subject?.name}</p>
-        <p className="text-xs text-graydark/40 mb-4">{topic.questionCount} ข้อ</p>
+        <p className="text-xs text-graydark/50 mb-4">วิชา: {subject?.name}</p>
         {!topic.available ? <span className="mt-auto block text-center text-sm bg-graylight/15 text-graydark/40 rounded-xl py-2.5 font-medium">ยังไม่เปิดให้ทำ</span> : canStart ? <Link href={`/exam/${topic.subjectId}?topic=${topic.id}`} className="mt-auto block text-center text-sm bg-navy text-white rounded-xl py-2.5 font-medium hover:opacity-90">{attempt ? 'ทำอีกครั้ง' : 'ทำข้อสอบ'}</Link> : accessLoading ? <span className="mt-auto block text-center text-sm bg-graylight/15 text-graydark/40 rounded-xl py-2.5 font-medium">กำลังตรวจสอบสิทธิ์</span> : <Link href={isLoggedIn ? '/account' : '/login'} className="mt-auto flex items-center justify-center gap-1.5 text-center text-sm border border-amber-300 text-amber-700 rounded-xl py-2.5 font-medium hover:bg-amber-50"><Lock size={14} />{isLoggedIn ? 'ปลดล็อกสมาชิก' : isFreeTrial ? 'เข้าสู่ระบบเพื่อทดลอง' : 'เข้าสู่ระบบ'}</Link>}
       </div>
     </div>
@@ -101,6 +98,8 @@ export default function PracticePage() {
   const [filter, setFilter] = useState(EMPTY_FILTER);
   const [stats, setStats] = useState(null);
   const { loading: accessLoading, isLoggedIn, isMember } = useMembershipStatus();
+  const { data: examCatalog, loading: catalogLoading } = useExamCatalog('practice');
+  const publishedSets = examCatalog?.sets || [];
 
   // อ่าน localStorage หลัง mount เท่านั้น เพื่อไม่ให้ markup ตอน SSR กับตอน hydrate ต่างกัน
   useEffect(() => {
@@ -120,15 +119,17 @@ export default function PracticePage() {
 
   const visibleSets = useMemo(() => {
     if (!showingSets) return [];
-    return topics.filter((t) => {
-      if (!filter.topics.includes(t.id)) return false;
-      if (q && !`${t.name} ${t.description}`.toLowerCase().includes(q)) return false;
-      if (!stats) return true;
-      const done = Boolean(stats.topicAttempts[t.id]);
-      if (filter.status === 'done' && !done) return false;
-      if (filter.status === 'undone' && done) return false;
-      return true;
-    });
+    return topics
+      .filter((t) => {
+        if (!filter.topics.includes(t.id)) return false;
+        if (q && !`${t.name} ${t.description}`.toLowerCase().includes(q)) return false;
+        if (!stats) return true;
+        const done = Boolean(stats.topicAttempts[t.id]);
+        if (filter.status === 'done' && !done) return false;
+        if (filter.status === 'undone' && done) return false;
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'th'));
   }, [showingSets, filter, q, stats]);
 
   const visibleSubjects = useMemo(() => {
@@ -176,7 +177,7 @@ export default function PracticePage() {
         <div>
           <h1 className="text-2xl font-semibold text-navy mb-1">แบบฝึกหัดรายวิชา</h1>
           <p className="text-graydark/60">
-            เลือกวิชาเพื่อเริ่มทำข้อสอบและพัฒนาคะแนนของคุณ · รวม {totalQuestions} ข้อ
+            เลือกวิชาและหมวดที่ต้องการฝึกเพื่อพัฒนาคะแนนของคุณ
           </p>
         </div>
 
@@ -270,6 +271,15 @@ export default function PracticePage() {
       </div>
 
       <ResumeBanner />
+
+      {!catalogLoading && publishedSets.length > 0 && (
+        <section className="mb-10">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-2"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-accent-cyan">คลังข้อสอบจริง</p><h2 className="mt-1 text-lg font-bold text-navy">ชุดข้อสอบที่แอดมินเผยแพร่</h2><p className="mt-1 text-sm text-graydark/55">รายการนี้อัปเดตจากหลังบ้านโดยตรง</p></div><span className="rounded-full bg-cyan-50 px-3 py-1.5 text-xs font-bold text-cyan-700">{publishedSets.length} ชุด</span></div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {publishedSets.map((set) => <PublishedExamSetCard key={set.id} set={set} isLoggedIn={isLoggedIn} />)}
+          </div>
+        </section>
+      )}
 
       {stats && stats.wrongBySubject.length > 0 && !showingSets && (
         <section className="border border-red-200 bg-red-50/40 rounded-2xl p-6 mb-8">
@@ -376,8 +386,7 @@ export default function PracticePage() {
                     {style.short}
                   </span>
                   {isFreeTrial && <span className="self-start -mt-1 text-[10px] font-medium text-emerald-600">ทดลองฟรี</span>}
-                  <p className="text-sm font-medium text-graydark leading-snug mb-1">{t.name}</p>
-                  <p className="text-[11px] text-graydark/40 mb-3">{t.questionCount} ข้อ</p>
+                  <p className="text-sm font-medium text-graydark leading-snug mb-3">{t.name}</p>
                   <Link href={canStart ? `/exam/${t.subjectId}?topic=${t.id}` : isLoggedIn ? '/account' : '/login'} className={`mt-auto text-center text-xs rounded-lg py-2 font-medium ${canStart ? 'bg-navy text-white hover:opacity-90' : 'border border-amber-300 text-amber-700 hover:bg-amber-50'}`}>{canStart ? 'เริ่มทำ' : isLoggedIn ? 'ปลดล็อก' : 'เข้าสู่ระบบ'}</Link>
                 </div>
               );

@@ -14,12 +14,13 @@ const STATUS_OPTIONS = [
   { id: 'done', label: 'เคยทำแล้ว' },
 ];
 
-function Checkbox({ checked, label, onChange }) {
+function Checkbox({ checked, label, onChange, disabled = false, className = '' }) {
   return (
     <button
       type="button"
       onClick={onChange}
-      className="flex items-start gap-2 text-left w-full group"
+      disabled={disabled}
+      className={`flex w-full items-start gap-2 text-left group disabled:cursor-not-allowed disabled:opacity-45 ${className}`}
     >
       <span
         className={`w-4 h-4 rounded shrink-0 mt-0.5 flex items-center justify-center border transition-colors ${
@@ -35,11 +36,67 @@ function Checkbox({ checked, label, onChange }) {
   );
 }
 
+function GroupedTopicFilter({ draft, setDraft, availableTopics, topicGroups }) {
+  const groups = (topicGroups || [])
+    .map((group) => ({ ...group, topics: availableTopics.filter((topic) => topic.groupId === group.id) }))
+    .filter((group) => group.topics.length > 0);
+  const groupedTopicIds = new Set(groups.flatMap((group) => group.topics.map((topic) => topic.id)));
+  const ungroupedTopics = availableTopics.filter((topic) => !groupedTopicIds.has(topic.id));
+  if (ungroupedTopics.length) groups.push({ id: 'ungrouped', name: 'ยังไม่จัดหมวดหลัก', topics: ungroupedTopics });
+  const allTopicIds = groups.flatMap((group) => group.topics.map((topic) => topic.id));
+  const allTopicsSelected = draft.topics.length === 0;
+
+  function isChecked(ids) {
+    return !allTopicsSelected && ids.length > 0 && ids.every((id) => draft.topics.includes(id));
+  }
+
+  function toggleTopicIds(ids) {
+    if (!ids.length) return;
+
+    setDraft((current) => {
+      const selected = current.topics;
+      const selectedAll = selected.length > 0 && ids.every((id) => selected.includes(id));
+      const nextTopics = selectedAll
+        ? selected.filter((id) => !ids.includes(id))
+        : [...new Set([...selected, ...ids])];
+
+      // เลือกครบทุกหัวข้อ = ไม่มีเงื่อนไขหัวข้อ ซึ่งเป็นความหมายเดียวกับ “ทั้งหมด”
+      const allIncluded = allTopicIds.length > 0 && allTopicIds.every((id) => nextTopics.includes(id));
+      return { ...current, topics: allIncluded ? [] : nextTopics };
+    });
+  }
+
+  return (
+    <div className="space-y-2.5">
+      <Checkbox
+        checked={allTopicsSelected}
+        label="ทั้งหมด"
+        onChange={() => setDraft((current) => ({ ...current, topics: [] }))}
+      />
+      {groups.map((group) => {
+        const groupTopicIds = group.topics.map((topic) => topic.id);
+        const canSelect = groupTopicIds.length > 0;
+        return (
+          <details key={group.id} className="rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2" open={groups.length === 1}>
+            <summary className="cursor-pointer list-none text-sm font-semibold text-navy">
+              <span className="flex items-center justify-between gap-2"><span>{group.name}</span><span className="text-xs font-medium text-graydark/45">{group.topics.length} หัวข้อ</span></span>
+            </summary>
+            <div className="mt-3 space-y-2.5 border-t border-slate-200 pt-3">
+              <Checkbox checked={isChecked(groupTopicIds)} label={`ทั้งหมดใน ${group.name}`} disabled={!canSelect} onChange={() => toggleTopicIds(groupTopicIds)} />
+              {group.topics.map((topic) => <Checkbox key={topic.id} checked={isChecked([topic.id])} label={topic.name} onChange={() => toggleTopicIds([topic.id])} className="pl-5" />)}
+            </div>
+          </details>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * scopeSubjectId: ถ้าส่งมา แผงจะล็อกอยู่ในวิชานั้นวิชาเดียว
  * (ซ่อนคอลัมน์ "วิชา" และแสดงหมวดย่อยของวิชานั้นทันทีโดยไม่ต้องเลือกวิชาก่อน)
  */
-export default function PracticeFilter({ value, onChange, scopeSubjectId = null }) {
+export default function PracticeFilter({ value, onChange, scopeSubjectId = null, topicItems = topics, topicGroups = [] }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const boxRef = useRef(null);
@@ -68,7 +125,7 @@ export default function PracticeFilter({ value, onChange, scopeSubjectId = null 
       const nextSubjects = has ? d.subjects.filter((s) => s !== id) : [...d.subjects, id];
       // ถ้าเอาวิชาออก ต้องเอาหมวดย่อยของวิชานั้นออกด้วย ไม่งั้นจะค้างเป็นตัวกรองล่องหน
       const nextTopics = d.topics.filter((tid) => {
-        const t = topics.find((x) => x.id === tid);
+        const t = topicItems.find((x) => x.id === tid);
         return t && nextSubjects.includes(t.subjectId);
       });
       return { ...d, subjects: nextSubjects, topics: nextTopics };
@@ -84,9 +141,13 @@ export default function PracticeFilter({ value, onChange, scopeSubjectId = null 
 
   // ในหน้ารายวิชา หมวดย่อยคือชุดของวิชานั้นเลย
   // ส่วนหน้ารวม หมวดย่อยจะโผล่เมื่อเลือกวิชาแล้วเท่านั้น (ไม่งั้นรายการจะยาวเกินไป)
-  const subTopics = scopeSubjectId
-    ? topics.filter((t) => t.subjectId === scopeSubjectId)
-    : topics.filter((t) => draft.subjects.includes(t.subjectId));
+  const subTopics = (scopeSubjectId
+    ? topicItems.filter((t) => t.subjectId === scopeSubjectId)
+    : topicItems.filter((t) => draft.subjects.includes(t.subjectId))
+  ).sort((a, b) => a.name.localeCompare(b.name, 'th'));
+  const visibleGroups = topicGroups.filter((group) => (
+    scopeSubjectId ? group.subject_id === scopeSubjectId : draft.subjects.includes(group.subject_id)
+  ));
   const allSubjectsChecked = draft.subjects.length === 0;
 
   return (
@@ -114,20 +175,26 @@ export default function PracticeFilter({ value, onChange, scopeSubjectId = null 
             {subTopics.length > 0 && (
               <div className="p-5">
                 <p className="text-xs text-graydark/50 mb-3">หมวดย่อย</p>
-                <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
-                  <Checkbox
-                    checked={draft.topics.length === 0}
-                    label="ทั้งหมด"
-                    onChange={() => setDraft((d) => ({ ...d, topics: [] }))}
-                  />
-                  {subTopics.map((t) => (
-                    <Checkbox
-                      key={t.id}
-                      checked={draft.topics.includes(t.id)}
-                      label={t.name}
-                      onChange={() => toggleTopic(t.id)}
-                    />
-                  ))}
+                <div className="max-h-[28rem] overflow-y-auto pr-1">
+                  {visibleGroups.length > 0 ? (
+                    <GroupedTopicFilter draft={draft} setDraft={setDraft} availableTopics={subTopics} topicGroups={visibleGroups} />
+                  ) : (
+                    <div className="space-y-2.5">
+                      <Checkbox
+                        checked={draft.topics.length === 0}
+                        label="ทั้งหมด"
+                        onChange={() => setDraft((d) => ({ ...d, topics: [] }))}
+                      />
+                      {subTopics.map((t) => (
+                        <Checkbox
+                          key={t.id}
+                          checked={draft.topics.includes(t.id)}
+                          label={t.name}
+                          onChange={() => toggleTopic(t.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

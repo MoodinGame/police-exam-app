@@ -7,9 +7,13 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { subjects } from '@/lib/subjects';
-import { questions } from '@/lib/questions';
+import { questions as fallbackQuestions } from '@/lib/questions';
 import { topics } from '@/lib/topics';
 import { recordTopicAttempt } from '@/lib/progress';
+import { confirmIncompleteAnswers } from '@/lib/sweetAlert';
+import { useAttemptHistory } from '@/lib/useAttemptHistory';
+import { noCopyHandlers } from '@/lib/copyProtection';
+import ExamResultSummary from '@/components/ExamResultSummary';
 import {
   saveSession,
   getSessionFor,
@@ -17,8 +21,6 @@ import {
   practiceSessionId,
 } from '@/lib/examSession';
 import {
-  CheckCircle2,
-  XCircle,
   Clock,
   ChevronLeft,
   ChevronRight,
@@ -56,26 +58,78 @@ function ProgressRing({ pct }) {
   );
 }
 
+function PracticeResult({ setName, subjectId, topicId, questionSetId, subjectQuestions, answers, score, elapsedSeconds, standardSeconds, onRestart }) {
+  const subject = subjects.find((item) => item.id === subjectId);
+  const history = useAttemptHistory({ bank: 'practice', subjectId, topicId: topicId || null });
+
+  const items = subjectQuestions.map((item) => ({
+    id: item.id,
+    question: item.question,
+    choices: item.choices,
+    answerIndex: item.answerIndex,
+    selectedIndex: answers[item.id],
+    explanation: item.explanation,
+    categoryId: item.topicId || subjectId,
+    categoryName: (item.topicId && topics.find((topicItem) => topicItem.id === item.topicId)?.name) || subject?.name || null,
+  }));
+
+  return (
+    <div className="mx-auto max-w-6xl">
+      <ExamResultSummary
+        title={setName}
+        subtitle={subject?.name}
+        score={score}
+        total={subjectQuestions.length}
+        elapsedSeconds={elapsedSeconds}
+        standardSeconds={standardSeconds}
+        items={items}
+        history={history}
+        backHref={topicId ? `/practice/${subjectId}` : '/practice'}
+        backLabel="กลับไปเลือกชุดข้อสอบ"
+        onRetrySame={onRestart}
+        newHref="/practice"
+        newLabel="เลือกชุดใหม่"
+        practiceHrefForCategory={(categoryId) => `/exam/${subjectId}?topic=${categoryId}`}
+      />
+    </div>
+  );
+}
+
 export default function ExamPage() {
   const { subject: subjectId } = useParams();
   const searchParams = useSearchParams();
   const topicId = searchParams.get('topic');
+  const setSlug = searchParams.get('set');
   const topic = topicId ? topics.find((t) => t.id === topicId) : null;
 
   const subject = subjects.find((s) => s.id === subjectId);
-  const subjectQuestions = useMemo(
+  const fallbackSubjectQuestions = useMemo(
     () =>
-      questions.filter(
+      setSlug ? [] : fallbackQuestions.filter(
         (q) => q.subjectId === subjectId && (!topicId || q.topicId === topicId)
       ),
-    [subjectId, topicId]
+    [setSlug, subjectId, topicId]
   );
+  const [questionState, setQuestionState] = useState({ loading: true, questions: null, set: null, error: null });
+  const subjectQuestions = questionState.questions || fallbackSubjectQuestions;
+  // Practice content loaded from the database is intentionally untimed unless
+  // an administrator assigns a positive duration to a specific exam set.
+  // Keep the legacy one-minute-per-question timer only for local fallback
+  // questions while the old question bank is being migrated.
+  const configuredDurationMinutes = Number(questionState.set?.durationMinutes);
+  const isTimed = questionState.set
+    ? Number.isFinite(configuredDurationMinutes) && configuredDurationMinutes > 0
+    : !questionState.questions;
+  const fullDurationSeconds = isTimed
+    ? (questionState.set ? configuredDurationMinutes : subjectQuestions.length) * 60
+    : 0;
+  const questionsReady = !questionState.loading;
 
   const [phase, setPhase] = useState('taking'); // taking | result
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState({});
   const [flagged, setFlagged] = useState({});
-  const [secondsLeft, setSecondsLeft] = useState(subjectQuestions.length * 60); // demo: 1 นาที/ข้อ
+  const [secondsLeft, setSecondsLeft] = useState(fullDurationSeconds); // demo: 1 นาที/ข้อ
   const [showNav, setShowNav] = useState(false); // รายการข้อสอบบนจอเล็ก
   const [resumed, setResumed] = useState(false);
   // ต้องเป็น state ไม่ใช่ ref เพราะ effect บันทึกต้องรอจน state ที่กู้มาถูก apply จริงก่อน
@@ -85,49 +139,88 @@ export default function ExamPage() {
   const restoredRef = useRef(false);
 
   const router = useRouter();
-  const sessionId = practiceSessionId(subjectId, topicId);
+  const sessionId = practiceSessionId(subjectId, setSlug || topicId);
+
+  // The database becomes the primary source as soon as an administrator has
+  // added reviewed questions for this topic. The old local bank remains only
+  // as a temporary fallback while the database is empty or being migrated.
+  useEffect(() => {
+    let active = true;
+    restoredRef.current = false;
+    recordedRef.current = false;
+    setRestoreDone(false);
+    setQuestionState({ loading: true, questions: null, set: null, error: null });
+
+    async function loadQuestions() {
+      try {
+        const params = new URLSearchParams({ subject: subjectId });
+        if (setSlug) params.set('set', setSlug);
+        else if (topicId) params.set('topic', topicId);
+        const response = await fetch(`/api/practice-questions?${params.toString()}`, { cache: 'no-store' });
+        const result = await response.json();
+        if (!active) return;
+        if (!response.ok) {
+          setQuestionState({ loading: false, questions: [], set: null, error: { status: response.status, message: result.error } });
+          return;
+        }
+        setQuestionState({
+          loading: false,
+          questions: result.source === 'database' ? (result.questions || []) : null,
+          set: result.set || null,
+          error: null,
+        });
+      } catch {
+        if (active) setQuestionState({ loading: false, questions: null, set: null, error: null });
+      }
+    }
+
+    loadQuestions();
+    return () => { active = false; };
+  }, [setSlug, subjectId, topicId]);
 
   // กู้ข้อสอบที่ค้างไว้ (ถ้าเป็นชุดเดียวกัน) — ทำครั้งเดียวหลัง mount
   useEffect(() => {
-    if (restoredRef.current) return;
+    if (!questionsReady || restoredRef.current) return;
     restoredRef.current = true;
     const saved = getSessionFor(sessionId);
     if (saved && saved.total === subjectQuestions.length) {
       setAnswers(saved.answers || {});
       setFlagged(saved.flagged || {});
       setCurrent(Math.min(saved.current || 0, subjectQuestions.length - 1));
-      setSecondsLeft(saved.secondsLeft ?? subjectQuestions.length * 60);
+      setSecondsLeft(saved.secondsLeft ?? fullDurationSeconds);
       setResumed(true);
+    } else {
+      setSecondsLeft(fullDurationSeconds);
     }
     setRestoreDone(true);
-  }, [sessionId, subjectQuestions.length]);
+  }, [fullDurationSeconds, questionsReady, sessionId, subjectQuestions.length]);
 
   useEffect(() => {
-    if (phase !== 'taking') return;
+    if (!questionsReady || phase !== 'taking' || !isTimed) return;
     if (secondsLeft <= 0) {
       setPhase('result');
       return;
     }
     const t = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
     return () => clearTimeout(t);
-  }, [secondsLeft, phase]);
+  }, [isTimed, questionsReady, secondsLeft, phase]);
 
   // บันทึกความคืบหน้าอัตโนมัติระหว่างทำ เผื่อปิดแท็บไปเฉยๆ
   useEffect(() => {
-    if (phase !== 'taking' || !restoreDone || subjectQuestions.length === 0) return;
+    if (!questionsReady || phase !== 'taking' || !restoreDone || subjectQuestions.length === 0) return;
     saveSession({
       sessionId,
       kind: 'practice',
       subjectId,
       topicId: topicId || null,
-      label: topic ? topic.name : subject?.name,
+      label: questionState.set?.title || (topic ? topic.name : subject?.name),
       answers,
       flagged,
       current,
       secondsLeft,
       total: subjectQuestions.length,
     });
-  }, [phase, restoreDone, sessionId, subjectId, topicId, topic, subject, answers, flagged, current, secondsLeft, subjectQuestions.length]);
+  }, [questionsReady, phase, restoreDone, sessionId, subjectId, topicId, topic, subject, questionState.set, answers, flagged, current, secondsLeft, subjectQuestions.length]);
 
   const score = subjectQuestions.reduce(
     (acc, item) => acc + (answers[item.id] === item.answerIndex ? 1 : 0),
@@ -135,18 +228,54 @@ export default function ExamPage() {
   );
 
   useEffect(() => {
-    if (phase === 'result' && topicId && !recordedRef.current) {
+    if (questionsReady && phase === 'result' && !recordedRef.current) {
       recordedRef.current = true;
-      recordTopicAttempt({
-        topicId,
-        subjectId,
-        score,
-        total: subjectQuestions.length,
-        answers,
-        durationSeconds: Math.max(0, subjectQuestions.length * 60 - secondsLeft),
-      });
+      const elapsedSeconds = isTimed ? Math.max(0, fullDurationSeconds - secondsLeft) : 0;
+      if (topicId) {
+        recordTopicAttempt({
+          topicId,
+          subjectId,
+          score,
+          total: subjectQuestions.length,
+          answers,
+          durationSeconds: elapsedSeconds,
+        });
+      }
+      if (questionState.questions) {
+        fetch('/api/attempts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bank: 'practice',
+            setId: questionState.set?.id || null,
+            subjectId,
+            topicId: questionState.set?.topicId || null,
+            title: questionState.set?.title || (topic ? topic.name : subject?.name),
+            questionIds: subjectQuestions.map((item) => item.id),
+            answers,
+            elapsedSeconds,
+          }),
+        }).catch(() => {});
+      }
     }
-  }, [answers, phase, secondsLeft, topicId, subjectId, score, subjectQuestions.length]);
+  }, [answers, fullDurationSeconds, isTimed, questionState.questions, questionState.set, questionsReady, phase, secondsLeft, subjectId, subjectQuestions, topic, topicId, score, subject?.name]);
+
+  if (!questionsReady) {
+    return <div className="min-h-screen flex items-center justify-center bg-white"><p className="text-sm text-graydark/55">กำลังเตรียมข้อสอบ...</p></div>;
+  }
+
+  if (questionState.error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white px-4">
+        <div className="max-w-md text-center">
+          <p className="text-graydark mb-4">{questionState.error.message || 'ไม่สามารถเปิดชุดข้อสอบนี้ได้'}</p>
+          <Link href={questionState.error.status === 401 ? '/login' : '/account'} className="text-accent-cyan underline">
+            {questionState.error.status === 401 ? 'เข้าสู่ระบบ' : 'ดูแพ็กเกจสมาชิก'}
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (!subject || subjectQuestions.length === 0) {
     return (
@@ -165,7 +294,7 @@ export default function ExamPage() {
   const total = subjectQuestions.length;
   const answeredCount = subjectQuestions.filter((item) => answers[item.id] !== undefined).length;
   const progressPct = Math.round((answeredCount / total) * 100);
-  const setName = topic ? topic.name : subject.name;
+  const setName = questionState.set?.title || (topic ? topic.name : subject.name);
 
   const selectAnswer = (qId, choiceIndex) => {
     if (phase !== 'taking') return;
@@ -182,15 +311,15 @@ export default function ExamPage() {
     setAnswers({});
     setFlagged({});
     setCurrent(0);
-    setSecondsLeft(total * 60);
+    setSecondsLeft(fullDurationSeconds);
     setResumed(false);
     recordedRef.current = false;
     setPhase('taking');
   }
 
-  function submit() {
+  async function submit() {
     const left = total - answeredCount;
-    if (left > 0 && !window.confirm(`ยังเหลืออีก ${left} ข้อที่ยังไม่ได้ตอบ ต้องการส่งข้อสอบเลยหรือไม่?`)) {
+    if (left > 0 && !(await confirmIncompleteAnswers(left, 'ส่งข้อสอบ'))) {
       return;
     }
     clearSessionIf(sessionId); // ส่งแล้วไม่ต้องค้างไว้ให้ทำต่อ
@@ -216,77 +345,19 @@ export default function ExamPage() {
   // ---------- หน้าผลคะแนน ----------
   if (phase === 'result') {
     return (
-      <div className="min-h-screen bg-white px-4 sm:px-6 py-6 sm:py-10">
-        <div className="max-w-3xl mx-auto">
-          <div className="bg-navy text-white rounded-2xl p-6 sm:p-8 text-center mb-8">
-            <p className="text-graylight mb-1">ผลคะแนน · {setName}</p>
-            <p className="text-5xl font-bold mb-1">
-              {score}
-              <span className="text-2xl text-graylight">/{total}</span>
-            </p>
-            <p className="text-accent-cyan">{Math.round((score / total) * 100)}% ถูกต้อง</p>
-          </div>
-
-          <div className="space-y-4">
-            {subjectQuestions.map((item, idx) => {
-              const userAnswer = answers[item.id];
-              const isCorrect = userAnswer === item.answerIndex;
-              return (
-                <div key={item.id} className="border border-graylight/30 rounded-xl p-4 sm:p-5">
-                  <div className="flex items-start gap-3 mb-3">
-                    {isCorrect ? (
-                      <CheckCircle2 className="text-accent-green shrink-0 mt-0.5" size={20} />
-                    ) : (
-                      <XCircle className="text-red-500 shrink-0 mt-0.5" size={20} />
-                    )}
-                    <p className="font-medium text-graydark">
-                      {idx + 1}. {item.question}
-                    </p>
-                  </div>
-                  <div className="sm:pl-8 space-y-1.5 text-sm">
-                    {item.choices.map((c, i) => {
-                      const isUser = userAnswer === i;
-                      const isAns = item.answerIndex === i;
-                      return (
-                        <div
-                          key={i}
-                          className={`px-3 py-1.5 rounded-lg ${
-                            isAns
-                              ? 'bg-accent-green/15 text-graydark font-medium'
-                              : isUser
-                              ? 'bg-red-50 text-red-600'
-                              : 'text-graydark/70'
-                          }`}
-                        >
-                          {c} {isAns && '✓'} {isUser && !isAns && '(คำตอบของคุณ)'}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <p className="sm:pl-8 mt-3 text-sm text-graydark/60">
-                    <span className="font-medium text-navy">คำอธิบาย: </span>
-                    {item.explanation}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-3 mt-8">
-            <Link
-              href={topicId ? `/practice/${subjectId}` : '/practice'}
-              className="flex-1 text-center border border-navy text-navy rounded-xl py-3 font-medium hover:bg-navy/5"
-            >
-              กลับไปเลือกชุดข้อสอบ
-            </Link>
-            <button
-              onClick={restart}
-              className="flex-1 bg-accent-cyan text-white rounded-xl py-3 font-medium hover:opacity-90"
-            >
-              ทำใหม่อีกครั้ง
-            </button>
-          </div>
-        </div>
+      <div className="min-h-screen bg-white px-4 py-6 sm:px-6 sm:py-10">
+        <PracticeResult
+          setName={setName}
+          subjectId={subjectId}
+          topicId={topicId}
+          questionSetId={questionState.set?.id || null}
+          subjectQuestions={subjectQuestions}
+          answers={answers}
+          score={score}
+          elapsedSeconds={isTimed ? Math.max(0, fullDurationSeconds - secondsLeft) : 0}
+          standardSeconds={isTimed ? fullDurationSeconds : null}
+          onRestart={restart}
+        />
       </div>
     );
   }
@@ -375,13 +446,20 @@ export default function ExamPage() {
               <p className="text-[10px] text-graydark/40 leading-none mb-0.5">จำนวนข้อ</p>
               <p className="text-sm font-medium text-navy">{total} ข้อ</p>
             </div>
-            <div>
-              <p className="text-[10px] text-graydark/40 leading-none mb-0.5">เวลาที่เหลือ</p>
-              <p className="text-sm font-medium text-navy flex items-center gap-1 tabular-nums">
-                <Clock size={13} />
-                {formatTime(secondsLeft)}
-              </p>
-            </div>
+            {isTimed ? (
+              <div>
+                <p className="text-[10px] text-graydark/40 leading-none mb-0.5">เวลาที่เหลือ</p>
+                <p className="text-sm font-medium text-navy flex items-center gap-1 tabular-nums">
+                  <Clock size={13} />
+                  {formatTime(secondsLeft)}
+                </p>
+              </div>
+            ) : (
+              <div>
+                <p className="text-[10px] text-graydark/40 leading-none mb-0.5">รูปแบบการทำ</p>
+                <p className="text-sm font-medium text-emerald-600">ไม่จับเวลา</p>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -427,7 +505,7 @@ export default function ExamPage() {
             </div>
           )}
 
-          <div className="border border-graylight/30 rounded-2xl p-5 sm:p-6 bg-white">
+          <div className="border border-graylight/30 rounded-2xl p-5 sm:p-6 bg-white no-copy" {...noCopyHandlers}>
             <div className="flex items-center justify-between gap-3 mb-4">
               <p className="font-semibold text-navy">
                 ข้อที่ {current + 1} / {total}

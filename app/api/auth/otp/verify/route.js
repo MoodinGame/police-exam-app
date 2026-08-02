@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import {
@@ -13,6 +14,7 @@ import {
   serializeChallenge,
 } from '@/lib/otpServer';
 import { ensureUserForPhone, registerUserForPhone } from '@/lib/serverUser';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const runtime = 'nodejs';
 
@@ -57,8 +59,23 @@ export async function POST(request) {
     return NextResponse.json({ error: message }, { status });
   }
 
+  // สร้าง sessionId ใหม่ทุกครั้งที่ล็อกอินสำเร็จ แล้วบันทึกทับของเดิมใน DB
+  // เพื่อบังคับใช้งานได้ทีละเครื่อง — เครื่องเก่าที่ถือ sessionId เดิมจะถูกปฏิเสธในครั้งถัดไป
+  const sessionId = randomBytes(18).toString('base64url');
+  const supabase = getSupabaseAdmin();
+  const { error: sessionError } = await supabase
+    .from('app_users')
+    .update({ session_id: sessionId })
+    .eq('phone', challenge.phone);
+  // ยังไม่ได้รัน migration เพิ่มคอลัมน์ session_id — ปล่อยให้ล็อกอินผ่านต่อไปได้โดยยังไม่บังคับทีละเครื่อง
+  // PGRST204 = PostgREST หา column ไม่เจอใน schema cache (กรณีปกติก่อนรัน migration)
+  // 42703 = Postgres undefined_column (เผื่อ error หลุดมาจากชั้น DB ตรง ๆ)
+  if (sessionError && sessionError.code !== 'PGRST204' && sessionError.code !== '42703') {
+    return NextResponse.json({ error: 'เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง' }, { status: 503 });
+  }
+
   store.delete(OTP_CHALLENGE_COOKIE);
-  store.set(AUTH_SESSION_COOKIE, createSession(challenge.phone), {
+  store.set(AUTH_SESSION_COOKIE, createSession(challenge.phone, sessionId), {
     ...secureCookieOptions,
     maxAge: 365 * 24 * 60 * 60,
   });

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { getAttempts } from '@/lib/progress';
 import { getMockAttempts } from '@/lib/mockExamProgress';
-import { getMockExamSet, getMockQuestionsForSet } from '@/lib/mockExamCatalog';
+import { loadMockExamSets, getCachedMockExamSet, fetchMockExam } from '@/lib/mockExamClient';
 import { questions } from '@/lib/questions';
 import { subjects } from '@/lib/subjects';
 import { topics } from '@/lib/topics';
@@ -79,7 +79,7 @@ function buildPracticeHistory() {
 
 function buildMockHistory() {
   return getMockAttempts().map((attempt, index) => {
-    const exam = getMockExamSet(attempt.examId);
+    const exam = getCachedMockExamSet(attempt.examId);
     const percent = attempt.total ? Math.round((attempt.score / attempt.total) * 100) : 0;
 
     return {
@@ -95,6 +95,36 @@ function buildMockHistory() {
       answers: attempt.answers || null,
       examId: attempt.examId,
       passed: attempt.passed,
+    };
+  });
+}
+
+function buildDatabaseHistory(rows) {
+  return (rows || []).map((attempt) => {
+    const total = attempt.total_questions || 0;
+    const score = attempt.correct_answers || 0;
+    const subjectName = attempt.content_subjects?.name || 'ไม่พบชื่อวิชา';
+    const topicName = attempt.content_topics?.name;
+    const isMock = attempt.bank === 'mock';
+
+    return {
+      id: `database-${attempt.id}`,
+      databaseAttemptId: attempt.id,
+      kind: isMock ? 'mock' : 'practice',
+      title: attempt.title || (isMock ? 'ข้อสอบเสมือนจริง' : 'แบบฝึกหัดรายวิชา'),
+      subtitle: isMock
+        ? `${total} ข้อ · ${attempt.exam_sets?.title || subjectName}`
+        : `${subjectName}${topicName ? ` · ${topicName}` : ''}`,
+      score,
+      total,
+      percent: total ? Math.round((score / total) * 100) : 0,
+      at: attempt.completed_at || attempt.started_at,
+      durationSeconds: attempt.elapsed_seconds,
+      answers: attempt.answers || null,
+      subjectId: attempt.subject_id,
+      topicId: attempt.content_topics?.legacy_id || null,
+      examId: attempt.exam_sets?.slug || null,
+      passed: null,
     };
   });
 }
@@ -139,14 +169,51 @@ function HistoryItem({ item, selected, onSelect }) {
 }
 
 function AnswerReview({ item }) {
+  // ข้อสอบ Mock ต้องดึงคำถามจาก API ใหม่ทุกครั้ง (มีเช็คสิทธิ์สมาชิก) ต่างจากแบบฝึกหัดที่ยังอ่านจากไฟล์ static
+  const [reviewQuestions, setReviewQuestions] = useState(null);
+  const [reviewLoadFailed, setReviewLoadFailed] = useState(false);
+
+  useEffect(() => {
+    if (!item || !item.answers) return undefined;
+    let active = true;
+    setReviewQuestions(null);
+    setReviewLoadFailed(false);
+
+    if (item.databaseAttemptId) {
+      fetch(`/api/attempts/${item.databaseAttemptId}`, { cache: 'no-store' })
+        .then(async (response) => {
+          if (!response.ok) throw new Error('Unable to load attempt');
+          return response.json();
+        })
+        .then((data) => {
+          if (active) setReviewQuestions(data.questions || []);
+        })
+        .catch(() => {
+          if (active) setReviewLoadFailed(true);
+        });
+    } else if (item.kind === 'mock' && item.examId) {
+      fetchMockExam(item.examId)
+        .then((data) => {
+          if (active) setReviewQuestions(data.questions || []);
+        })
+        .catch(() => {
+          if (active) setReviewLoadFailed(true);
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [item]);
+
   const itemQuestions = useMemo(() => {
     if (!item?.answers) return [];
-    if (item.kind === 'mock') return getMockQuestionsForSet(item.examId);
+    if (item.databaseAttemptId || item.kind === 'mock') return reviewQuestions || [];
     return questions.filter((question) => question.subjectId === item.subjectId && (!item.topicId || question.topicId === item.topicId));
-  }, [item]);
+  }, [item, reviewQuestions]);
 
   if (!item) return null;
   const hasSavedAnswers = Boolean(item.answers && Object.keys(item.answers).length);
+  const reviewPending = (item.databaseAttemptId || item.kind === 'mock') && hasSavedAnswers && reviewQuestions === null && !reviewLoadFailed;
   const canReview = hasSavedAnswers && itemQuestions.length > 0;
 
   return (
@@ -157,7 +224,9 @@ function AnswerReview({ item }) {
       </div>
 
       <div className="p-5 sm:p-6">
-        {canReview ? (
+        {reviewPending ? (
+          <div className="h-40 rounded-2xl bg-graylight/10 animate-pulse" />
+        ) : canReview ? (
           <>
             <div className="mb-4 flex items-center gap-2"><FileText size={18} className="text-accent-cyan" /><div><h3 className="font-bold text-navy">เฉลยและคำตอบที่เลือก</h3><p className="text-xs text-graydark/45">แสดงคำตอบที่บันทึกไว้ในการทำครั้งนี้</p></div></div>
             <div className="max-h-[520px] space-y-3 overflow-y-auto pr-1">
@@ -182,8 +251,33 @@ export default function HistoryPage() {
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
+    let active = true;
     const sortLatest = (items) => [...items].sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
-    setHistory({ mock: sortLatest(buildMockHistory()), practice: sortLatest(buildPracticeHistory()) });
+    // โหลดรายชื่อชุด Mock Exam ให้พร้อมก่อน จะได้แสดงชื่อชุดจริงแทนป้ายทั่วไป
+    async function loadHistory() {
+      try {
+        const response = await fetch('/api/attempts?limit=200', { cache: 'no-store' });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Unable to load attempts');
+        const databaseItems = buildDatabaseHistory(payload.attempts);
+        if (!active) return;
+        setHistory({
+          mock: sortLatest(databaseItems.filter((item) => item.kind === 'mock')),
+          practice: sortLatest(databaseItems.filter((item) => item.kind === 'practice')),
+        });
+      } catch {
+        // Keep the local data readable for attempts made before the database was connected.
+        loadMockExamSets().finally(() => {
+          if (!active) return;
+          setHistory({ mock: sortLatest(buildMockHistory()), practice: sortLatest(buildPracticeHistory()) });
+        });
+      }
+    }
+
+    loadHistory();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const activeItems = history[activeTab];

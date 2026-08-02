@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import AdminContentManager from '@/components/AdminContentManager';
 
 export default function AdminPage() {
-  redirect('/admin/payments');
+  return <AdminContentManager bank="practice" />;
 }

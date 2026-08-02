@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { apiErrorResponse, requireCurrentUser } from '@/lib/serverUser';
+import { getPublicFallbackPlans } from '@/lib/membership';
+import { getPublicPlans, getUserAccess, membershipForResponse } from '@/lib/serverAccess';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const runtime = 'nodejs';
@@ -8,6 +10,7 @@ const defaultPaymentAccount = {
   bankName: '',
   accountName: '',
   accountNumber: '',
+  qrCodeUrl: '',
 };
 
 function normalizeAccount(value) {
@@ -16,35 +19,26 @@ function normalizeAccount(value) {
     bankName: String(value.bankName || '').slice(0, 120),
     accountName: String(value.accountName || '').slice(0, 120),
     accountNumber: String(value.accountNumber || '').slice(0, 80),
+    qrCodeUrl: String(value.qrCodeUrl || '').slice(0, 500),
   };
-}
-
-function membershipForResponse(membership) {
-  if (!membership) return { status: 'inactive' };
-  if (membership.status === 'active' && membership.expires_at && new Date(membership.expires_at) <= new Date()) {
-    return { ...membership, status: 'expired' };
-  }
-  return membership;
 }
 
 export async function GET() {
   try {
     const user = await requireCurrentUser();
     const supabase = getSupabaseAdmin();
-    const [membershipResult, accountResult] = await Promise.all([
-      supabase
-        .from('memberships')
-        .select('id, plan_id, plan_name, amount, status, submitted_at, activated_at, expires_at, last_payment_slip_id, rejection_reason')
-        .eq('user_id', user.id)
-        .maybeSingle(),
+    const [access, plans, accountResult] = await Promise.all([
+      getUserAccess(supabase, user.id),
+      getPublicPlans(supabase),
       supabase.from('app_settings').select('value').eq('key', 'payment_account').maybeSingle(),
     ]);
 
-    if (membershipResult.error) throw membershipResult.error;
     if (accountResult.error) throw accountResult.error;
 
     return NextResponse.json({
-      membership: membershipForResponse(membershipResult.data),
+      membership: membershipForResponse(access),
+      isMember: access.isMember,
+      plans: plans || getPublicFallbackPlans(),
       paymentAccount: normalizeAccount(accountResult.data?.value),
     });
   } catch (error) {

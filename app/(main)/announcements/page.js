@@ -1,58 +1,59 @@
-import { Megaphone } from 'lucide-react';
-import { announcements } from '@/lib/announcements';
+'use client';
 
-const THAI_MONTHS = [
-  'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
-  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
-];
+import { useEffect, useMemo, useState } from 'react';
+import { LoaderCircle, Megaphone } from 'lucide-react';
+import { announcements as fallbackAnnouncements } from '@/lib/announcements';
 
-function formatThaiDate(iso) {
-  const d = new Date(iso + 'T00:00:00+07:00');
-  return `${d.getDate()} ${THAI_MONTHS[d.getMonth()]} ${d.getFullYear() + 543}`;
-}
-
-const TAG_STYLES = {
-  'ฟีเจอร์ใหม่': 'bg-accent-green/10 text-green-700',
-  'อัปเดตคลังข้อสอบ': 'bg-accent-cyan/10 text-accent-cyan',
-  'กำหนดการ': 'bg-navy/10 text-navy',
-  'แจ้งเตือนระบบ': 'bg-orange-100 text-orange-600',
+const TONE_STYLES = {
+  info: 'bg-cyan-50 text-cyan-700',
+  success: 'bg-emerald-50 text-emerald-700',
+  warning: 'bg-amber-50 text-amber-700',
+  important: 'bg-violet-50 text-violet-700',
 };
 
+function formatThaiDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return '';
+  return date.toLocaleDateString('th-TH', { dateStyle: 'medium' });
+}
+
+function fallbackItems() {
+  return fallbackAnnouncements.map((item) => ({
+    id: item.id,
+    title: item.title,
+    summary: item.body,
+    body: '',
+    tone: 'info',
+    created_at: item.date,
+  }));
+}
+
 export default function AnnouncementsPage() {
-  const sorted = [...announcements].sort((a, b) => b.date.localeCompare(a.date));
+  const [items, setItems] = useState(fallbackItems);
+  const [loading, setLoading] = useState(true);
 
-  return (
-    <div>
-      <h1 className="text-2xl font-semibold text-navy mb-1">ประกาศ</h1>
-      <p className="text-graydark/60 mb-8">ข่าวสารและอัปเดตจากทีมงาน</p>
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      try {
+        const response = await fetch('/api/announcements', { cache: 'no-store' });
+        const result = await response.json();
+        if (active && response.ok) setItems(result.announcements || []);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    load();
+    return () => { active = false; };
+  }, []);
 
-      {sorted.length === 0 ? (
-        <div className="border border-dashed border-graylight/40 rounded-2xl p-12 text-center text-graydark/40">
-          ยังไม่มีประกาศ
-        </div>
-      ) : (
-        <ul className="space-y-4 max-w-2xl">
-          {sorted.map((a) => (
-            <li key={a.id} className="border border-graylight/30 rounded-2xl p-6">
-              <div className="flex items-start gap-4">
-                <div className="w-9 h-9 shrink-0 rounded-full bg-navy/5 flex items-center justify-center">
-                  <Megaphone size={16} className="text-navy" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${TAG_STYLES[a.tag] || 'bg-navy/5 text-navy'}`}>
-                      {a.tag}
-                    </span>
-                    <span className="text-xs text-graydark/40">{formatThaiDate(a.date)}</span>
-                  </div>
-                  <h3 className="font-medium text-graydark mb-1.5">{a.title}</h3>
-                  <p className="text-sm text-graydark/60 leading-relaxed">{a.body}</p>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+  const sorted = useMemo(() => [...items].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))), [items]);
+
+  return <div className="max-w-3xl">
+    <h1 className="mb-1 text-2xl font-semibold text-navy">ประกาศ</h1>
+    <p className="mb-8 text-graydark/60">ข่าวสารและอัปเดตจากทีมงาน</p>
+
+    {loading && <div className="mb-4 inline-flex items-center gap-2 text-sm text-graydark/45"><LoaderCircle size={16} className="animate-spin" />กำลังตรวจสอบประกาศล่าสุด</div>}
+    {sorted.length === 0 ? <div className="rounded-2xl border border-dashed border-graylight/40 p-12 text-center text-graydark/40">ยังไม่มีประกาศ</div> : <ul className="space-y-4">{sorted.map((item) => <li key={item.id} className="rounded-2xl border border-graylight/30 bg-white p-5 sm:p-6"><div className="flex items-start gap-4"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-navy/5"><Megaphone size={16} className="text-navy" /></div><div className="min-w-0 flex-1"><div className="mb-1 flex flex-wrap items-center gap-2"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${TONE_STYLES[item.tone] || TONE_STYLES.info}`}>{item.tone === 'warning' ? 'แจ้งเตือน' : item.tone === 'important' ? 'สำคัญ' : item.tone === 'success' ? 'อัปเดต' : 'ข่าวสาร'}</span><span className="text-xs text-graydark/40">{formatThaiDate(item.created_at)}</span></div><h2 className="mb-1.5 font-semibold text-graydark">{item.title}</h2><p className="text-sm leading-relaxed text-graydark/65">{item.summary}</p>{item.body && <p className="mt-3 whitespace-pre-line border-t border-graylight/20 pt-3 text-sm leading-relaxed text-graydark/60">{item.body}</p>}</div></div></li>)}</ul>}
+  </div>;
 }

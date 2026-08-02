@@ -6,16 +6,21 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   AlertCircle,
   ArrowLeft,
-  CheckCircle2,
   Clock3,
   Flag,
+  LockKeyhole,
+  LogIn,
   PauseCircle,
   Send,
-  XCircle,
 } from 'lucide-react';
-import { getMockExamSet, getMockQuestionsForSet } from '@/lib/mockExamCatalog';
+import { fetchMockExam } from '@/lib/mockExamClient';
 import { saveMockAttempt } from '@/lib/mockExamProgress';
 import { clearSessionIf, getSessionFor, mockSessionId, saveSession } from '@/lib/examSession';
+import { confirmIncompleteAnswers } from '@/lib/sweetAlert';
+import { subjects } from '@/lib/subjects';
+import { useAttemptHistory } from '@/lib/useAttemptHistory';
+import { noCopyHandlers } from '@/lib/copyProtection';
+import ExamResultSummary from '@/components/ExamResultSummary';
 
 const LETTERS = ['A', 'B', 'C', 'D'];
 
@@ -28,11 +33,42 @@ function formatTime(seconds) {
 }
 
 export default function MockExamTakingPage() {
-  const { examId } = useParams();
+  const { examId: slug } = useParams();
   const router = useRouter();
-  const exam = getMockExamSet(examId);
-  const questions = useMemo(() => getMockQuestionsForSet(examId), [examId]);
-  const sessionId = mockSessionId(examId);
+
+  // exam+questions มาจาก Supabase ผ่าน API เสมอ (ไม่มีการ mock/แคชแบบ static แล้ว)
+  // เพราะต้องเช็คสิทธิ์สมาชิกใหม่ทุกครั้งที่เข้าทำ
+  const [examData, setExamData] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const sessionId = mockSessionId(slug);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError(null);
+    // ถ้ามีที่พักไว้สำหรับชุดนี้ ให้ขอข้อสอบชุดเดิมที่สุ่มไว้ตอนเริ่ม แทนการสุ่มใหม่
+    const saved = getSessionFor(sessionId);
+    const resumeIds = saved?.kind === 'mock' && saved.examId === slug && Array.isArray(saved.questionIds)
+      ? saved.questionIds
+      : null;
+    fetchMockExam(slug, resumeIds)
+      .then((data) => {
+        if (active) setExamData(data);
+      })
+      .catch((err) => {
+        if (active) setLoadError({ status: err.status || 500, message: err.message });
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [slug, sessionId]);
+
+  const exam = examData?.exam || null;
+  const questions = useMemo(() => examData?.questions || [], [examData]);
   const durationSeconds = (exam?.durationMinutes || 0) * 60;
 
   const [current, setCurrent] = useState(0);
@@ -44,7 +80,7 @@ export default function MockExamTakingPage() {
   const [showNavigator, setShowNavigator] = useState(false);
   const recorded = useRef(false);
 
-  const ready = Boolean(exam?.ready && questions.length === exam?.totalQuestions);
+  const ready = Boolean(exam && questions.length > 0);
   const answeredCount = Object.keys(answers).length;
   const flaggedCount = Object.keys(flagged).filter((id) => flagged[id]).length;
   const score = questions.reduce(
@@ -53,13 +89,10 @@ export default function MockExamTakingPage() {
   );
 
   useEffect(() => {
-    if (!exam) {
-      setRestored(true);
-      return;
-    }
+    if (!exam) return;
 
     const saved = getSessionFor(sessionId);
-    if (saved?.kind === 'mock' && saved.examId === exam.id) {
+    if (saved?.kind === 'mock' && saved.examId === slug) {
       setCurrent(Math.min(saved.current || 0, Math.max(questions.length - 1, 0)));
       setAnswers(saved.answers || {});
       setFlagged(saved.flagged || {});
@@ -68,7 +101,7 @@ export default function MockExamTakingPage() {
       setSecondsLeft(durationSeconds);
     }
     setRestored(true);
-  }, [durationSeconds, exam, questions.length, sessionId]);
+  }, [durationSeconds, exam, questions.length, sessionId, slug]);
 
   useEffect(() => {
     if (!restored || !ready || phase !== 'taking') return;
@@ -76,15 +109,16 @@ export default function MockExamTakingPage() {
     saveSession({
       sessionId,
       kind: 'mock',
-      examId,
+      examId: slug,
       label: exam.title,
       answers,
       flagged,
       current,
       secondsLeft,
       total: questions.length,
+      questionIds: questions.map((item) => item.id),
     });
-  }, [answers, current, exam, examId, flagged, phase, questions.length, ready, restored, secondsLeft, sessionId]);
+  }, [answers, current, exam, slug, flagged, phase, questions, ready, restored, secondsLeft, sessionId]);
 
   useEffect(() => {
     if (!restored || !ready || phase !== 'taking') return;
@@ -102,36 +136,72 @@ export default function MockExamTakingPage() {
 
     recorded.current = true;
     saveMockAttempt({
-      examId: exam.id,
+      examId: slug,
       score,
       total: questions.length,
       passed: score >= exam.passScore,
       answers,
       durationSeconds: Math.max(0, durationSeconds - secondsLeft),
     });
+    fetch('/api/attempts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bank: 'mock',
+        setId: exam.id,
+        subjectId: exam.subjectId,
+        title: exam.title,
+        questionIds: questions.map((question) => question.id),
+        answers,
+        elapsedSeconds: Math.max(0, durationSeconds - secondsLeft),
+      }),
+    }).catch(() => {
+      // Keep the local attempt as a fallback if the request cannot be saved.
+    });
     clearSessionIf(sessionId);
-  }, [answers, durationSeconds, exam, phase, questions.length, score, secondsLeft, sessionId]);
+  }, [answers, durationSeconds, exam, phase, questions.length, score, secondsLeft, sessionId, slug]);
 
-  if (!exam) {
-    return <ExamMessage title="ไม่พบชุดข้อสอบ" message="ลิงก์นี้อาจไม่ถูกต้อง หรือชุดข้อสอบถูกปิดใช้งานแล้ว" />;
+  if (loading) {
+    return <ExamMessage title="กำลังโหลดชุดข้อสอบ..." message="กรุณารอสักครู่" />;
+  }
+
+  if (loadError) {
+    if (loadError.status === 401) {
+      return (
+        <ExamMessage
+          icon={LogIn}
+          title="เข้าสู่ระบบก่อนเริ่มสอบ"
+          message="ใช้ OTP เพื่อเข้าสู่ระบบและเริ่มทำข้อสอบเสมือนจริง"
+          actionHref="/login"
+          actionLabel="เข้าสู่ระบบด้วย OTP"
+        />
+      );
+    }
+    if (loadError.status === 403) {
+      return (
+        <ExamMessage
+          icon={LockKeyhole}
+          title="ชุดนี้สำหรับสมาชิก"
+          message={loadError.message}
+          actionHref="/account"
+          actionLabel="ดูแพ็กเกจสมาชิก"
+        />
+      );
+    }
+    return <ExamMessage title="ไม่พบชุดข้อสอบ" message={loadError.message || 'ลิงก์นี้อาจไม่ถูกต้อง หรือชุดข้อสอบถูกปิดใช้งานแล้ว'} />;
   }
 
   if (!ready) {
-    return (
-      <ExamMessage
-        title={`${exam.title} ยังไม่พร้อมสอบ`}
-        message={`แอดมินกำลังอัปเดตคลังข้อสอบ ชุดนี้มี ${exam.available}/${exam.totalQuestions} ข้อ และจะเปิดให้เริ่มสอบเมื่อครบตามสัดส่วนทุกวิชา`}
-      />
-    );
+    return <ExamMessage title="ไม่พบชุดข้อสอบ" message="ลิงก์นี้อาจไม่ถูกต้อง หรือชุดข้อสอบถูกปิดใช้งานแล้ว" />;
   }
 
   const question = questions[current];
   const progress = Math.round((answeredCount / questions.length) * 100);
   const passed = score >= exam.passScore;
 
-  const submit = () => {
+  const submit = async () => {
     const remaining = questions.length - answeredCount;
-    if (remaining && !window.confirm(`ยังมี ${remaining} ข้อที่ไม่ได้ตอบ ต้องการส่งข้อสอบเลยหรือไม่?`)) return;
+    if (remaining && !(await confirmIncompleteAnswers(remaining, 'ส่งข้อสอบ'))) return;
     setPhase('result');
   };
 
@@ -139,45 +209,40 @@ export default function MockExamTakingPage() {
     saveSession({
       sessionId,
       kind: 'mock',
-      examId: exam.id,
+      examId: slug,
       label: exam.title,
       answers,
       flagged,
       current,
       secondsLeft,
       total: questions.length,
+      questionIds: questions.map((item) => item.id),
     });
     router.push('/mock-exam');
   };
 
   if (phase === 'result') {
-    return (
-      <main className="min-h-screen bg-graylight/10 px-4 py-8 sm:py-10">
-        <div className="max-w-3xl mx-auto">
-          <section className="bg-navy text-white rounded-2xl p-7 sm:p-9 text-center mb-6">
-            <p className="text-white/65 text-sm mb-2">ผลสอบ {exam.title}</p>
-            <p className="text-5xl font-bold">{score}<span className="text-2xl text-white/55">/{questions.length}</span></p>
-            <p className={`mt-3 font-medium ${passed ? 'text-accent-green' : 'text-orange-300'}`}>
-              {passed ? `ผ่านเกณฑ์ ${exam.passScore} คะแนน` : `ยังไม่ถึงเกณฑ์ ${exam.passScore} คะแนน`}
-            </p>
-          </section>
+    const elapsedSeconds = Math.max(0, durationSeconds - secondsLeft);
+    const items = questions.map((item) => ({
+      id: item.id,
+      question: item.question,
+      choices: item.choices,
+      answerIndex: item.answerIndex,
+      selectedIndex: answers[item.id],
+      explanation: item.explanation,
+      categoryId: item.subjectId,
+      categoryName: subjects.find((subjectItem) => subjectItem.id === item.subjectId)?.name || null,
+    }));
 
-          <section className="space-y-3">
-            {questions.map((item, index) => {
-              const correct = answers[item.id] === item.answerIndex;
-              return (
-                <article key={`${item.id}-${index}`} className="bg-white border border-graylight/25 rounded-xl p-5">
-                  <div className="flex gap-3">
-                    <span className={correct ? 'text-accent-green' : 'text-red-500'}>{correct ? <CheckCircle2 size={20} /> : <XCircle size={20} />}</span>
-                    <p className="font-medium text-graydark">{index + 1}. {item.question}</p>
-                  </div>
-                  <p className="mt-3 text-sm text-graydark/65"><span className="font-medium text-navy">คำตอบ: </span>{item.choices[item.answerIndex]}</p>
-                  <p className="mt-1 text-sm text-graydark/60">{item.explanation}</p>
-                </article>
-              );
-            })}
-          </section>
-          <Link href="/mock-exam" className="mt-6 inline-flex items-center justify-center w-full sm:w-auto bg-navy text-white rounded-xl px-5 py-3 text-sm font-medium">กลับไปหน้าข้อสอบเสมือนจริง</Link>
+    return (
+      <main className="min-h-screen bg-[radial-gradient(circle_at_8%_0%,rgba(0,180,216,0.12),transparent_24rem),radial-gradient(circle_at_94%_12%,rgba(216,176,107,0.13),transparent_25rem),#f6f8fc] px-4 py-6 sm:py-9">
+        <div className="mx-auto max-w-6xl">
+          <Link href="/mock-exam" className="inline-flex items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold text-graydark/65 transition hover:bg-white hover:text-navy">
+            <ArrowLeft size={17} /> กลับไปหน้าข้อสอบเสมือนจริง
+          </Link>
+          <div className="mt-3">
+            <MockResult exam={exam} questions={questions} items={items} score={score} elapsedSeconds={elapsedSeconds} />
+          </div>
         </div>
       </main>
     );
@@ -191,6 +256,7 @@ export default function MockExamTakingPage() {
             <div className="min-w-0">
               <p className="text-[11px] text-graydark/50">ชุดข้อสอบ</p>
               <p className="text-sm font-semibold text-navy truncate">{exam.title}</p>
+              {exam.trackName && <p className="mt-0.5 text-[11px] font-semibold text-cyan-700">{exam.trackName} · เกณฑ์ผ่าน {exam.passScore}/{exam.totalQuestions}</p>}
             </div>
             <div className="hidden sm:block border-l border-graylight/25 pl-4">
               <p className="text-[11px] text-graydark/50">เวลาที่เหลือ</p>
@@ -231,7 +297,7 @@ export default function MockExamTakingPage() {
             </div>
           )}
 
-          <article className="bg-white border border-graylight/25 rounded-2xl p-5 sm:p-7">
+          <article className="bg-white border border-graylight/25 rounded-2xl p-5 sm:p-7 no-copy" {...noCopyHandlers}>
             <p className="text-sm font-semibold text-navy mb-6">ข้อที่ {current + 1} / {questions.length}</p>
             <h1 className="text-lg font-medium text-graydark leading-relaxed mb-7">{question.question}</h1>
 
@@ -283,6 +349,7 @@ export default function MockExamTakingPage() {
               <div><dt className="text-graydark/45 text-xs">ชุดข้อสอบ</dt><dd className="font-semibold text-navy mt-0.5">{exam.title}</dd></div>
               <div><dt className="text-graydark/45 text-xs">จำนวนข้อ</dt><dd className="font-semibold text-navy mt-0.5">{exam.totalQuestions} ข้อ</dd></div>
               <div><dt className="text-graydark/45 text-xs">เวลาสอบ</dt><dd className="font-semibold text-navy mt-0.5">{exam.durationMinutes} นาที</dd></div>
+              <div><dt className="text-graydark/45 text-xs">เกณฑ์ผ่าน</dt><dd className="font-semibold text-navy mt-0.5">{exam.passScore}/{exam.totalQuestions} คะแนน</dd></div>
             </dl>
           </section>
 
@@ -296,14 +363,117 @@ export default function MockExamTakingPage() {
   );
 }
 
-function ExamMessage({ title, message }) {
+// ภาค ก คือวิชาความสามารถทั่วไปตามหลัก ก.พ. (คณิตศาสตร์ + ภาษาไทย) ซึ่งคงที่ทุกสายงาน
+// ส่วนภาค ข คือวิชาเฉพาะตำแหน่งที่เหลือในสัดส่วนของแต่ละสายงาน
+const PART_A_SUBJECT_IDS = new Set(['aptitude', 'thai']);
+const PART_PASS_RATIO = 0.6;
+
+function examPartOf(subjectId) {
+  return PART_A_SUBJECT_IDS.has(subjectId) ? 'ก' : 'ข';
+}
+
+function MockResult({ exam, questions, items, score, elapsedSeconds }) {
+  const history = useAttemptHistory({ bank: 'mock', setId: exam.id });
+  const passThreshold = questions.length ? exam.passScore / questions.length : 0.6;
+
+  return (
+    <>
+      {exam.blueprint?.length > 0 && <PartBreakdown exam={exam} items={items} score={score} />}
+      <div className={exam.blueprint?.length > 0 ? 'mt-4' : ''}>
+        <ExamResultSummary
+          title={exam.title}
+          subtitle={`เกณฑ์ผ่าน ${exam.passScore}/${questions.length} ข้อ`}
+          score={score}
+          total={questions.length}
+          elapsedSeconds={elapsedSeconds}
+          standardSeconds={exam.durationMinutes ? exam.durationMinutes * 60 : null}
+          passThreshold={passThreshold}
+          items={items}
+          history={history}
+          backHref="/mock-exam"
+          backLabel="กลับหน้าข้อสอบเสมือนจริง"
+          onRetrySame={() => window.location.reload()}
+          newHref="/mock-exam"
+          newLabel="เลือกชุดใหม่"
+          practiceHrefForCategory={(categoryId) => `/practice/${categoryId}`}
+        />
+      </div>
+    </>
+  );
+}
+
+function PartBreakdown({ exam, items, score }) {
+  const subjectScores = exam.blueprint.map((entry) => {
+    const subjectItems = items.filter((item) => item.categoryId === entry.subjectId);
+    const correct = subjectItems.filter((item) => item.selectedIndex === item.answerIndex).length;
+    return { subjectId: entry.subjectId, subjectName: entry.subjectName, total: entry.questionCount, correct };
+  });
+  const parts = { ก: { correct: 0, total: 0 }, ข: { correct: 0, total: 0 } };
+  subjectScores.forEach((item) => {
+    const part = parts[examPartOf(item.subjectId)];
+    part.correct += item.correct;
+    part.total += item.total;
+  });
+  const partPassed = (part) => part.total > 0 && part.correct / part.total >= PART_PASS_RATIO;
+  const totalQuestions = exam.blueprint.reduce((sum, entry) => sum + entry.questionCount, 0);
+  const overallPassed = score >= exam.passScore && partPassed(parts.ก) && partPassed(parts.ข);
+
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <div className="mb-4">
+        <h2 className="text-lg font-bold text-navy">คะแนนแยกภาค ก / ภาค ข</h2>
+        <p className="mt-1 text-xs text-graydark/50">{exam.trackName ? `สายงาน${exam.trackName} · ` : ''}เกณฑ์ผ่านแต่ละภาคใช้หลักทั่วไป {Math.round(PART_PASS_RATIO * 100)}% ของคะแนนเต็มภาคนั้น โปรดตรวจสอบเกณฑ์จริงจากประกาศรับสมัครของตำแหน่งที่สมัคร</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] border-collapse text-center text-sm">
+          <thead>
+            <tr className="text-xs text-graydark/55">
+              {subjectScores.map((item, index) => (
+                <th key={item.subjectId} className="border-b border-slate-200 px-2 py-2 font-semibold">{index + 1}. {item.subjectName} ({item.total})</th>
+              ))}
+              <th className="border-b border-slate-200 bg-amber-50 px-2 py-2 font-bold text-amber-800">ภาค ก (เต็ม {parts.ก.total})</th>
+              <th className="border-b border-slate-200 bg-cyan-50 px-2 py-2 font-bold text-cyan-800">ภาค ข (เต็ม {parts.ข.total})</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              {subjectScores.map((item) => (
+                <td key={item.subjectId} className="px-2 py-3 font-bold text-navy">{item.correct}</td>
+              ))}
+              <td className="bg-amber-50/60 px-2 py-3">
+                <p className="font-black text-navy">{parts.ก.correct}</p>
+                <p className={`mt-0.5 text-[11px] font-bold ${partPassed(parts.ก) ? 'text-emerald-600' : 'text-red-500'}`}>{partPassed(parts.ก) ? 'ผ่าน' : 'ไม่ผ่าน'}</p>
+              </td>
+              <td className="bg-cyan-50/60 px-2 py-3">
+                <p className="font-black text-navy">{parts.ข.correct}</p>
+                <p className={`mt-0.5 text-[11px] font-bold ${partPassed(parts.ข) ? 'text-emerald-600' : 'text-red-500'}`}>{partPassed(parts.ข) ? 'ผ่าน' : 'ไม่ผ่าน'}</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-4 grid gap-3 overflow-hidden rounded-2xl border border-slate-200 sm:grid-cols-2">
+        <div className="flex flex-col items-center justify-center gap-1 bg-slate-50 p-4">
+          <p className="text-xs font-semibold text-graydark/55">รวมคะแนนทั้งหมด ({totalQuestions})</p>
+          <p className="text-2xl font-black text-navy">{score}</p>
+        </div>
+        <div className={`flex flex-col items-center justify-center gap-1 p-4 ${overallPassed ? 'bg-emerald-50' : 'bg-red-50'}`}>
+          <p className="text-xs font-semibold text-graydark/55">ผลสอบข้อเขียน</p>
+          <p className={`text-sm font-bold ${overallPassed ? 'text-emerald-700' : 'text-red-600'}`}>{overallPassed ? 'อยู่ในกลุ่มให้เข้าสอบความเหมาะสมกับตำแหน่ง (รอบ 2)' : 'ไม่อยู่ในกลุ่มให้เข้าสอบความเหมาะสมกับตำแหน่ง (รอบ 2)'}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ExamMessage({ title, message, icon: Icon = AlertCircle, actionHref = '/mock-exam', actionLabel = 'กลับไป Mock Exam' }) {
   return (
     <main className="min-h-screen bg-graylight/10 px-4 py-10 sm:p-10 flex items-center justify-center">
       <section className="max-w-lg bg-white border border-graylight/30 rounded-2xl p-6 sm:p-8 text-center">
-        <AlertCircle className="text-amber-500 mx-auto mb-4" size={34} />
+        <Icon className="text-amber-500 mx-auto mb-4" size={34} />
         <h1 className="text-xl font-semibold text-navy mb-2">{title}</h1>
         <p className="text-sm text-graydark/60 leading-relaxed mb-6">{message}</p>
-        <Link href="/mock-exam" className="inline-flex items-center gap-2 bg-navy text-white rounded-xl px-5 py-3 text-sm font-medium"><ArrowLeft size={16} /> กลับไป Mock Exam</Link>
+        <Link href={actionHref} className="inline-flex items-center gap-2 bg-navy text-white rounded-xl px-5 py-3 text-sm font-medium"><ArrowLeft size={16} /> {actionLabel}</Link>
       </section>
     </main>
   );
