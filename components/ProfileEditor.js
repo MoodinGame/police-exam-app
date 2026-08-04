@@ -67,7 +67,7 @@ export default function ProfileEditor() {
         </div>
       </div>
 
-      {loading ? <div className="mt-5 h-28 animate-pulse rounded-xl bg-graylight/10" /> : (
+      {loading ? <div className="mt-5 h-28 skeleton" /> : (
         <form onSubmit={saveProfile} className="mt-5">
           <div className="grid gap-4 sm:grid-cols-3">
             <label className="text-sm font-medium text-graydark">ชื่อผู้ใช้

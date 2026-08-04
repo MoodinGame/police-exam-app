@@ -22,8 +22,7 @@ import { getAttempts } from '@/lib/progress';
 import { getMockAttempts } from '@/lib/mockExamProgress';
 import { loadMockExamSets, getCachedMockExamSet, fetchMockExam } from '@/lib/mockExamClient';
 import { questions } from '@/lib/questions';
-import { subjects } from '@/lib/subjects';
-import { topics } from '@/lib/topics';
+import { useCatalog } from '@/lib/subjectCatalog';
 
 const TABS = [
   { id: 'mock', label: 'ข้อสอบเสมือนจริง', icon: ClipboardCheck },
@@ -54,10 +53,12 @@ function resultTone(percent) {
   return { label: 'ควรทบทวนเพิ่ม', className: 'bg-rose-50 text-rose-700 border-rose-200' };
 }
 
-function buildPracticeHistory() {
+// ใช้เฉพาะตอน /api/attempts ล้มเหลว แล้วอ่านประวัติจากเครื่องแทน
+// findSubject ส่งมาจากคอมโพเนนต์ เพราะชื่อวิชาต้องมาจากฐานข้อมูล ไม่ใช่รายการ hardcode
+function buildPracticeHistory(findSubject, findTopic) {
   return getAttempts().map((attempt, index) => {
-    const subject = subjects.find((item) => item.id === attempt.subjectId);
-    const topic = topics.find((item) => item.id === attempt.topicId);
+    const subject = findSubject(attempt.subjectId);
+    const topic = findTopic(attempt.topicId);
     const percent = attempt.total ? Math.round((attempt.score / attempt.total) * 100) : 0;
 
     return {
@@ -249,6 +250,7 @@ export default function HistoryPage() {
   const [activeTab, setActiveTab] = useState('mock');
   const [history, setHistory] = useState({ mock: [], practice: [] });
   const [selected, setSelected] = useState(null);
+  const { findSubject, findTopic } = useCatalog();
 
   useEffect(() => {
     let active = true;
@@ -269,7 +271,7 @@ export default function HistoryPage() {
         // Keep the local data readable for attempts made before the database was connected.
         loadMockExamSets().finally(() => {
           if (!active) return;
-          setHistory({ mock: sortLatest(buildMockHistory()), practice: sortLatest(buildPracticeHistory()) });
+          setHistory({ mock: sortLatest(buildMockHistory()), practice: sortLatest(buildPracticeHistory(findSubject, findTopic)) });
         });
       }
     }
@@ -278,7 +280,7 @@ export default function HistoryPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [findSubject, findTopic]);
 
   const activeItems = history[activeTab];
   const summary = useMemo(() => {
@@ -293,7 +295,7 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 pb-6">
+    <div className="space-y-6 pb-6">
       <header className="app-card overflow-hidden bg-gradient-to-br from-navy via-[#193b66] to-[#23667b] p-6 text-white sm:p-8">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between"><div><div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-cyan-100"><History size={14} />ย้อนดูทุกผลการทำข้อสอบ</div><h1 className="mt-3 text-3xl font-black">ประวัติการสอบ</h1><p className="mt-2 text-sm leading-6 text-white/70">ดูคะแนน ความแม่นยำ และเฉลยที่คุณทำไว้ในแต่ละครั้ง</p></div><div className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 backdrop-blur-sm"><p className="text-xs text-white/60">ผลการทำทั้งหมด</p><p className="mt-1 text-3xl font-black">{history.mock.length + history.practice.length}<span className="ml-1 text-sm font-medium text-white/65">ครั้ง</span></p></div></div>
       </header>

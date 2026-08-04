@@ -1,14 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Search, Check, Lock, Sparkles, X } from 'lucide-react';
-import { subjects } from '@/lib/subjects';
-import { topicsBySubject } from '@/lib/topics';
-import { subjectStyles } from '@/lib/subjectStyles';
-import { getTopicProgress } from '@/lib/progress';
-import { isFreePracticeTopic } from '@/lib/entitlements';
+import { ArrowLeft, ArrowRight, Clock3, ListChecks, Search, Check, Lock, Sparkles, X } from 'lucide-react';
+import { resolveSubjects } from '@/lib/subjectCatalog';
+import { getSubjectStyle, subjectStyles } from '@/lib/subjectStyles';
+import { useProgressStats } from '@/lib/useProgressStats';
 import { useMembershipStatus } from '@/lib/useMembershipStatus';
 import { useExamCatalog } from '@/lib/useExamCatalog';
 import PracticeFilter, { EMPTY_FILTER } from '@/components/PracticeFilter';
@@ -19,67 +17,70 @@ const PASS_PCT = 60; // เกณฑ์ผ่านของแบบฝึก�
 const EMPTY_TOPIC_COUNTS = {};
 
 function SetCard({ topic, attempt, isMember, isLoggedIn, accessLoading, databaseQuestionCount }) {
-  const style = subjectStyles[topic.subjectId];
+  const style = getSubjectStyle(topic.subjectId);
   const pct = attempt ? Math.round((attempt.score / attempt.total) * 100) : null;
   const passed = pct !== null && pct >= PASS_PCT;
-  const isFreeTrial = isFreePracticeTopic(topic.id);
+  // ต้องยึด is_free_practice จากฐานข้อมูลอย่างเดียว ให้ตรงกับด่านตรวจสิทธิ์ฝั่งเซิร์ฟเวอร์
+  // ไม่งั้นจะขึ้นป้าย "ทดลองฟรี" แล้วกดเข้าไปโดนปฏิเสธ
+  const isFreeTrial = Boolean(topic.isFreePractice);
   const hasDatabaseQuestions = Number.isFinite(databaseQuestionCount) && databaseQuestionCount > 0;
   const questionCount = hasDatabaseQuestions ? databaseQuestionCount : topic.questionCount;
   const isAvailable = topic.available || hasDatabaseQuestions;
   const canStart = isAvailable && !accessLoading && (isMember || (isFreeTrial && isLoggedIn));
   const lockedForMember = isAvailable && !accessLoading && !canStart;
 
+  const SubjectIcon = style.icon;
+
   return (
-    <div className="app-card app-card-hover overflow-hidden flex flex-col">
+    <div className={`group relative flex flex-col overflow-hidden rounded-2xl border bg-white shadow-[0_6px_22px_rgba(30,64,100,0.08)] transition duration-300 ${
+      isAvailable
+        ? 'border-graylight/25 hover:-translate-y-1 hover:border-transparent hover:shadow-[0_16px_34px_rgba(30,64,100,0.16)]'
+        : 'border-graylight/20 opacity-75'
+    }`}>
+      {/* แถบสีประจำวิชาด้านบน ทำให้กวาดตาแยกวิชาได้เร็วขึ้นเวลาการ์ดเยอะ ๆ */}
+      <span className={`h-1.5 w-full shrink-0 ${isAvailable ? style.color : 'bg-graylight/30'}`} />
+
       {attempt ? (
-        <div
-          className={`flex items-center justify-between gap-2 px-4 py-2 text-xs font-medium text-white ${
-            passed ? 'bg-emerald-600' : 'bg-orange-500'
-          }`}
-        >
-          <span className="flex items-center gap-1.5">
-            <Check size={13} />
-            เคยทำแล้ว
-          </span>
-          <span>
-            {attempt.score}/{attempt.total} · {passed ? 'ผ่าน' : 'ไม่ผ่าน'}
-          </span>
+        <div className={`flex items-center justify-between gap-2 px-4 py-2 text-xs font-semibold text-white ${passed ? 'bg-emerald-600' : 'bg-orange-500'}`}>
+          <span className="flex items-center gap-1.5"><Check size={13} /> เคยทำแล้ว</span>
+          <span>{attempt.score}/{attempt.total} · {passed ? 'ผ่าน' : 'ไม่ผ่าน'}</span>
         </div>
       ) : (
-        <div className="h-[33px] bg-graylight/10 border-b border-graylight/20" />
+        <div className={`h-1 w-full ${isAvailable ? 'bg-gradient-to-r from-transparent via-slate-100 to-transparent' : ''}`} />
       )}
 
-      <div className="p-5 flex-1 flex flex-col">
-        <div className="flex flex-wrap items-center gap-1.5 mb-3">
-          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${style.chip}`}>
-            {style.short}
+      <div className="flex flex-1 flex-col p-5">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-sm transition-transform duration-300 ${isAvailable ? `${style.color} group-hover:scale-105` : 'bg-graylight/40'}`}>
+            <SubjectIcon size={20} />
           </span>
-          {!isAvailable && (
-            <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-graylight/20 text-graydark/50">
-              <Lock size={9} />
-              เร็วๆ นี้
-            </span>
-          )}
-          {isAvailable && isFreeTrial && (
-            <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-              <Sparkles size={9} />
-              ทดลองฟรี
-            </span>
-          )}
-          {lockedForMember && !isFreeTrial && (
-            <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
-              <Lock size={9} />
-              สมาชิก
-            </span>
-          )}
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${style.chip}`}>{style.short}</span>
+            {!isAvailable && (
+              <span className="flex items-center gap-1 rounded-full bg-graylight/20 px-2 py-0.5 text-[10px] font-semibold text-graydark/50"><Lock size={9} /> เร็วๆ นี้</span>
+            )}
+            {isAvailable && isFreeTrial && (
+              <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700"><Sparkles size={9} /> ทดลองฟรี</span>
+            )}
+            {lockedForMember && !isFreeTrial && (
+              <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700"><Lock size={9} /> สมาชิก</span>
+            )}
+          </div>
         </div>
 
-        <h3 className="font-medium text-graydark leading-snug mb-1">{topic.name}</h3>
-        <p className="text-xs text-graydark/50 mb-4 leading-relaxed">{topic.description}</p>
+        <h3 className="mb-1 font-bold leading-snug text-navy">{topic.name}</h3>
+        <p className="mb-4 line-clamp-2 text-xs leading-relaxed text-graydark/50">{topic.description}</p>
+
         {isAvailable && (
-          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-graydark/55">
-            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium">{questionCount} ข้อ</span>
-            {hasDatabaseQuestions && <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">ไม่จับเวลา</span>}
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-graydark/70">
+              <ListChecks size={12} /> {questionCount} ข้อ
+            </span>
+            {hasDatabaseQuestions && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 px-2.5 py-1 font-semibold text-cyan-700">
+                <Clock3 size={12} /> ไม่จับเวลา
+              </span>
+            )}
           </div>
         )}
 
@@ -87,24 +88,23 @@ function SetCard({ topic, attempt, isMember, isLoggedIn, accessLoading, database
           {canStart ? (
             <Link
               href={`/exam/${topic.subjectId}?topic=${topic.id}`}
-              className="block text-center text-sm bg-navy text-white rounded-xl py-2.5 font-medium hover:opacity-90"
+              className={`flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold text-white shadow-sm transition ${style.color} hover:opacity-90 hover:shadow-md`}
             >
               {attempt ? 'ทำอีกครั้ง' : 'ทำข้อสอบ'}
+              <ArrowRight size={15} className="transition-transform duration-300 group-hover:translate-x-0.5" />
             </Link>
           ) : isAvailable && accessLoading ? (
-            <span className="block text-center text-sm bg-graylight/15 text-graydark/40 rounded-xl py-2.5 font-medium">กำลังตรวจสอบสิทธิ์</span>
+            <span className="block rounded-xl bg-graylight/15 py-2.5 text-center text-sm font-medium text-graydark/40">กำลังตรวจสอบสิทธิ์</span>
           ) : isAvailable ? (
             <Link
               href={isLoggedIn ? '/account' : '/login'}
-              className="flex items-center justify-center gap-1.5 text-center text-sm border border-amber-300 text-amber-700 rounded-xl py-2.5 font-medium hover:bg-amber-50"
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50/60 py-2.5 text-center text-sm font-bold text-amber-700 transition hover:bg-amber-100"
             >
               <Lock size={14} />
               {isLoggedIn ? 'ปลดล็อกสมาชิก' : isFreeTrial ? 'เข้าสู่ระบบเพื่อทดลอง' : 'เข้าสู่ระบบ'}
             </Link>
           ) : (
-            <span className="block text-center text-sm bg-graylight/20 text-graydark/40 rounded-xl py-2.5 font-medium cursor-not-allowed">
-              ยังไม่เปิดให้ทำ
-            </span>
+            <span className="block cursor-not-allowed rounded-xl bg-graylight/20 py-2.5 text-center text-sm font-medium text-graydark/40">ยังไม่เปิดให้ทำ</span>
           )}
         </div>
       </div>
@@ -112,14 +112,64 @@ function SetCard({ topic, attempt, isMember, isLoggedIn, accessLoading, database
   );
 }
 
+// หัวข้อที่มีหัวข้อย่อยข้างในจะกลายเป็น "หัวเรื่องกลุ่ม" ส่วนหัวข้อปลายทางจะเป็นการ์ด
+// เรียงตามลำดับที่แอดมินกำหนดไว้ในหลังบ้าน และซ้อนได้หลายชั้น
+function TopicTreeSection({ nodes, depth = 0, progress, isMember, isLoggedIn, accessLoading, topicQuestionCounts }) {
+  const cards = nodes.filter((node) => node.children.length === 0);
+  const branches = nodes.filter((node) => node.children.length > 0);
+
+  return (
+    <div className={depth === 0 ? 'space-y-7' : 'space-y-5'}>
+      {cards.length > 0 && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {cards.map((node) => (
+            <SetCard
+              key={node.id}
+              topic={node}
+              attempt={progress?.[node.id] ?? null}
+              isMember={isMember}
+              isLoggedIn={isLoggedIn}
+              accessLoading={accessLoading}
+              databaseQuestionCount={topicQuestionCounts[node.id]}
+            />
+          ))}
+        </div>
+      )}
+
+      {branches.map((node, index) => (
+        <details key={node.id} open={depth > 0 || index === 0} className={depth === 0 ? 'rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5' : 'rounded-xl border border-slate-100 bg-slate-50/50 p-3'}>
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className={`h-5 w-1 shrink-0 rounded-full ${depth === 0 ? 'bg-accent-cyan' : 'bg-accent-gold'}`} />
+              <span className={`truncate ${depth === 0 ? 'font-bold text-navy' : 'text-sm font-semibold text-graydark'}`}>{node.name}</span>
+            </span>
+            <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-graydark/60">{node.children.length} หัวข้อ</span>
+          </summary>
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <TopicTreeSection
+              nodes={node.children}
+              depth={depth + 1}
+              progress={progress}
+              isMember={isMember}
+              isLoggedIn={isLoggedIn}
+              accessLoading={accessLoading}
+              topicQuestionCounts={topicQuestionCounts}
+            />
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
 function FreePracticeCard({ topic, subject, isLoggedIn }) {
-  const style = subjectStyles[subject.id];
+  const style = getSubjectStyle(subject.id, subject.shortName);
   const href = isLoggedIn
     ? `/exam/${topic.subjectId}?topic=${topic.id}`
     : '/login';
 
   return (
-    <article className="max-w-md overflow-hidden rounded-3xl border border-graylight/25 bg-white shadow-[0_12px_28px_rgba(32,48,92,0.12)]">
+    <article className="max-w-md overflow-hidden rounded-3xl border border-graylight/25 bg-white shadow-[0_12px_28px_rgba(30,64,100,0.12)]">
       <div className="p-6">
         <span className={`inline-flex rounded-lg px-3 py-1 text-xs font-semibold ${style.chip}`}>
           {style.short}
@@ -141,42 +191,55 @@ function FreePracticeCard({ topic, subject, isLoggedIn }) {
 
 export default function SubjectTopicsPage() {
   const { subject: subjectId } = useParams();
-  const subject = subjects.find((s) => s.id === subjectId);
-  const style = subjectStyles[subjectId];
+  const style = getSubjectStyle(subjectId);
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState(EMPTY_FILTER);
-  const [progress, setProgress] = useState(null);
+  // ความก้าวหน้ามาจาก exam_attempts ในฐานข้อมูล ไม่ใช่ localStorage — ล้างจากหลังบ้านได้และ sync ข้ามอุปกรณ์
+  const { loading: progressLoading, topicProgress } = useProgressStats();
+  const progress = progressLoading ? null : topicProgress;
   const { loading: accessLoading, isLoggedIn, isMember } = useMembershipStatus();
   const { data: examCatalog } = useExamCatalog('practice', subjectId);
   const topicQuestionCounts = examCatalog?.topicQuestionCounts || EMPTY_TOPIC_COUNTS;
-  const subjectTopics = useMemo(() => {
-    const databaseTopics = (examCatalog?.topics || [])
-      .filter((topic) => topic.subject_id === subjectId)
-      .map((topic) => {
-        const id = topic.legacy_id || topic.id;
-        return {
-          id,
-          subjectId,
-          groupId: topic.group_id || '',
-          name: topic.name,
-          description: topic.description || 'แบบฝึกหัดตามหัวข้อที่ผู้ดูแลกำหนด',
-          questionCount: topicQuestionCounts[id] || 0,
-          available: (topicQuestionCounts[id] || 0) > 0,
-        };
-      });
-    return databaseTopics.length ? databaseTopics : topicsBySubject(subjectId);
-  }, [examCatalog, subjectId, topicQuestionCounts]);
-  const topicGroups = useMemo(
-    () => (examCatalog?.topicGroups || []).filter((group) => group.subject_id === subjectId),
-    [examCatalog, subjectId],
-  );
+  // ชื่อ/คำอธิบายวิชายึดตามฐานข้อมูล เพื่อให้ตรงกับที่แอดมินตั้งไว้
+  const catalogSubjects = useMemo(() => resolveSubjects(examCatalog?.subjects), [examCatalog]);
+  const subject = catalogSubjects.find((item) => item.id === subjectId) || null;
+  // แสดงเฉพาะหัวข้อที่แอดมินสร้างไว้จริงในฐานข้อมูล — ไม่ fallback ไปใช้รายการ hardcode เดิม
+  // ไม่งั้นตอนคลังว่างจะขึ้นการ์ดหลอกที่กดทำไม่ได้เต็มหน้า
+  const subjectTopics = useMemo(() => (examCatalog?.topics || [])
+    .filter((topic) => topic.subject_id === subjectId)
+    .map((topic) => {
+      const id = topic.legacy_id || topic.id;
+      return {
+        id,
+        rowId: topic.id,
+        parentId: topic.parent_id || '',
+        subjectId,
+        sortOrder: topic.sort_order ?? 0,
+        name: topic.name,
+        description: topic.description || 'แบบฝึกหัดตามหัวข้อที่ผู้ดูแลกำหนด',
+        questionCount: topicQuestionCounts[id] || 0,
+        available: (topicQuestionCounts[id] || 0) > 0,
+        isFreePractice: Boolean(topic.is_free_practice),
+      };
+    }), [examCatalog, subjectId, topicQuestionCounts]);
 
-  // อ่าน localStorage หลัง mount เท่านั้น เพื่อไม่ให้ markup ตอน SSR กับตอน hydrate ต่างกัน
-  useEffect(() => {
-    const map = {};
-    for (const t of subjectTopics) map[t.id] = getTopicProgress(t.id);
-    setProgress(map);
+  // จัดหัวข้อเป็นลำดับชั้นตามที่แอดมินกำหนด: หัวข้อหลัก = หัวเรื่องของกลุ่มการ์ด, หัวข้อย่อย = การ์ด
+  const topicTree = useMemo(() => {
+    const byParent = new Map();
+    for (const item of subjectTopics) {
+      const key = item.parentId || '__root__';
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key).push(item);
+    }
+    const sortNodes = (list) => [...list].sort((a, b) => (
+      (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name, 'th')
+    ));
+    const attach = (key) => sortNodes(byParent.get(key) || []).map((item) => ({
+      ...item,
+      children: attach(item.rowId),
+    }));
+    return attach('__root__');
   }, [subjectTopics]);
 
   // เปลี่ยนวิชา = ล้างตัวกรองเดิม ไม่งั้นจะเหลือหมวดย่อยของวิชาก่อนหน้าค้างอยู่
@@ -185,26 +248,35 @@ export default function SubjectTopicsPage() {
     setQuery('');
   }, [subjectId]);
 
-  const filtered = useMemo(() => {
+  const matchesFilter = useCallback((t) => {
     const q = query.trim().toLowerCase();
-    return subjectTopics
-      .filter((t) => {
-        if (filter.topics.length > 0 && !filter.topics.includes(t.id)) return false;
+    if (filter.topics.length > 0 && !filter.topics.includes(t.id)) return false;
+    if (progress && filter.status !== 'all') {
+      const done = Boolean(progress[t.id]);
+      if (filter.status === 'done' && !done) return false;
+      if (filter.status === 'undone' && done) return false;
+    }
+    if (q && !`${t.name} ${t.description}`.toLowerCase().includes(q)) return false;
+    return true;
+  }, [query, filter, progress]);
 
-        if (progress && filter.status !== 'all') {
-          const done = Boolean(progress[t.id]);
-          if (filter.status === 'done' && !done) return false;
-          if (filter.status === 'undone' && done) return false;
-        }
+  // ตัดกิ่งที่ไม่ตรงตัวกรองออก แต่เก็บหัวข้อแม่ไว้ถ้ายังมีลูกที่ตรงอยู่ ไม่งั้นการ์ดจะลอยไม่มีหัวเรื่อง
+  const filteredTree = useMemo(() => {
+    const prune = (nodes) => nodes.reduce((kept, node) => {
+      const children = prune(node.children);
+      if (matchesFilter(node) || children.length > 0) kept.push({ ...node, children });
+      return kept;
+    }, []);
+    return prune(topicTree);
+  }, [topicTree, matchesFilter]);
 
-        if (q && !`${t.name} ${t.description}`.toLowerCase().includes(q)) return false;
-        return true;
-      })
-      .sort((a, b) => a.name.localeCompare(b.name, 'th'));
-  }, [subjectTopics, query, filter, progress]);
+  const filteredCount = useMemo(() => {
+    const count = (nodes) => nodes.reduce((total, node) => total + 1 + count(node.children), 0);
+    return count(filteredTree);
+  }, [filteredTree]);
 
   const freeTopic = useMemo(
-    () => subjectTopics.find((topic) => topic.available && isFreePracticeTopic(topic.id)) ?? null,
+    () => subjectTopics.find((topic) => topic.available && topic.isFreePractice) ?? null,
     [subjectTopics],
   );
 
@@ -228,7 +300,7 @@ export default function SubjectTopicsPage() {
   return (
     <div>
       <div className="flex items-start justify-between gap-6 flex-wrap mb-6">
-        <div className={`rounded-2xl p-6 text-white flex-1 min-w-[280px] shadow-[0_14px_30px_rgba(43,45,66,0.15)] ${style.color}`}>
+        <div className={`rounded-2xl p-6 text-white flex-1 min-w-[280px] shadow-[0_16px_40px_rgba(30,64,100,0.14)] ${style.color}`}>
           <Link
             href="/practice"
             className="group mb-5 inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/70"
@@ -291,7 +363,7 @@ export default function SubjectTopicsPage() {
           )}
         </div>
 
-        <PracticeFilter value={filter} onChange={setFilter} scopeSubjectId={subjectId} topicItems={subjectTopics} topicGroups={topicGroups} />
+        <PracticeFilter value={filter} onChange={setFilter} scopeSubjectId={subjectId} topicItems={subjectTopics} subjectItems={catalogSubjects} />
       </div>
 
       {!accessLoading && !isMember && (
@@ -308,7 +380,7 @@ export default function SubjectTopicsPage() {
       <div className="flex items-center justify-between gap-4 mb-4">
         <h2 className="font-semibold text-navy">
           ชุดข้อสอบ{' '}
-          <span className="text-sm font-normal text-graydark/40">({filtered.length} ชุด)</span>
+          <span className="text-sm font-normal text-graydark/40">({filteredCount} ชุด)</span>
         </h2>
         {(filter.topics.length > 0 || filter.status !== 'all' || query.trim() !== '') && (
           <button
@@ -324,49 +396,25 @@ export default function SubjectTopicsPage() {
         )}
       </div>
 
-      {filtered.length === 0 ? (
+      {subjectTopics.length === 0 ? (
+        <div className="border border-dashed border-graylight/40 rounded-2xl p-12 text-center">
+          <p className="text-graydark/50 mb-1">ยังไม่มีชุดข้อสอบในวิชานี้</p>
+          <p className="text-sm text-graydark/40">ผู้ดูแลระบบกำลังเตรียมเนื้อหา กลับมาดูใหม่อีกครั้งเร็ว ๆ นี้</p>
+        </div>
+      ) : filteredTree.length === 0 ? (
         <div className="border border-dashed border-graylight/40 rounded-2xl p-12 text-center">
           <p className="text-graydark/50 mb-1">ไม่พบชุดข้อสอบที่ตรงกับการค้นหา</p>
           <p className="text-sm text-graydark/40">ลองเปลี่ยนคำค้นหาดูอีกครั้ง</p>
         </div>
-      ) : topicGroups.length === 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((t) => (
-            <SetCard
-              key={t.id}
-              topic={t}
-              attempt={progress?.[t.id] ?? null}
-              isMember={isMember}
-              isLoggedIn={isLoggedIn}
-              accessLoading={accessLoading}
-              databaseQuestionCount={topicQuestionCounts[t.id]}
-            />
-          ))}
-        </div>
       ) : (
-        <div className="space-y-7">
-          {[...topicGroups, { id: 'ungrouped', name: 'หัวข้ออื่น', subject_id: subjectId }]
-            .map((group) => ({ ...group, topics: filtered.filter((topic) => (group.id === 'ungrouped' ? !topic.groupId : topic.groupId === group.id)) }))
-            .filter((group) => group.topics.length > 0)
-            .map((group, index) => (
-              <details key={group.id} open={index === 0} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3"><span className="flex items-center gap-2"><span className="h-5 w-1 rounded-full bg-accent-cyan" /><span className="font-bold text-navy">{group.name}</span></span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-graydark/60">{group.topics.length} หัวข้อ</span></summary>
-                <div className="mt-4 grid gap-4 border-t border-slate-100 pt-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {group.topics.map((t) => (
-                    <SetCard
-                      key={t.id}
-                      topic={t}
-                      attempt={progress?.[t.id] ?? null}
-                      isMember={isMember}
-                      isLoggedIn={isLoggedIn}
-                      accessLoading={accessLoading}
-                      databaseQuestionCount={topicQuestionCounts[t.id]}
-                    />
-                  ))}
-                </div>
-              </details>
-            ))}
-        </div>
+        <TopicTreeSection
+          nodes={filteredTree}
+          progress={progress}
+          isMember={isMember}
+          isLoggedIn={isLoggedIn}
+          accessLoading={accessLoading}
+          topicQuestionCounts={topicQuestionCounts}
+        />
       )}
     </div>
   );

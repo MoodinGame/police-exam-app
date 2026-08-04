@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { OXFORD_3000_TARGET, OXFORD_CEFR_LEVELS, vocabularyCards as fallbackVocabularyCards, vocabularyDecks as fallbackVocabularyDecks, vocabularyByDeck } from '@/lib/vocabulary';
 import { getVocabularyProgress, getVocabularyStats, saveVocabularyProgress } from '@/lib/vocabularyProgress';
+import { noCopyHandlers } from '@/lib/copyProtection';
 
 function DeckIcon({ deck, size = 18 }) {
   const icons = {
@@ -257,7 +258,7 @@ export default function VocabularyTrainer({ view = 'cards' }) {
   ];
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-6 pb-6">
+    <div className="mx-auto max-w-[1440px] space-y-6 pb-6 no-copy" {...noCopyHandlers}>
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div><h1 className="app-section-heading text-2xl font-bold text-navy">{isMatching ? 'เกมจับคู่คำศัพท์' : 'แฟลชการ์ด'}</h1><p className="mt-1 text-sm text-graydark/55">{isMatching ? 'จับคู่คำศัพท์กับคำแปล เพื่อทบทวนให้แม่นยำขึ้น' : 'เรียนรู้คำศัพท์ จดจำความหมาย และเลือกทบทวนตามชุดที่ต้องการ'}</p></div>
         <Link href={isMatching ? '/vocab' : '/matching-game'} className={`${isMatching ? 'btn-navy' : 'btn-primary'} gap-2 self-start sm:self-auto`}><Gamepad2 size={16} />{isMatching ? 'ไปทบทวนแฟลชการ์ด' : 'เล่นเกมจับคู่'}</Link>

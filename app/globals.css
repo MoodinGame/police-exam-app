@@ -1,17 +1,52 @@
+:root{
+  --font-family:var(--font-prompt),sans-serif;
+  --color-primary:#4F86F7; --color-primary-soft:#EAF1FF;
+  --color-secondary:#67C6B3; --color-secondary-soft:#E8F8F4;
+  --color-accent:#F5C76A;
+  --color-background:#F7FAFC; --color-surface:#FFFFFF;
+  --color-heading:#17345B; --color-text:#62748A; --color-border:#E4ECF4;
+  --color-success:#35B98B; --color-danger:#EF6A6A;
+  --radius-sm:12px; --radius-md:20px; --radius-lg:28px;
+  --shadow-sm:0 6px 22px rgba(30,64,100,.08);
+  --shadow-md:0 16px 44px rgba(30,64,100,.13);
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-6:24px;--space-8:32px;--space-12:48px;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
-  @apply bg-[#f7f9fc] text-graydark font-prompt antialiased;
+  @apply bg-[#F7FAFC] text-graydark font-prompt antialiased;
+  font-weight: 300;
+  line-height: 1.65;
   background-image:
-    radial-gradient(circle at 3% 0%, rgba(0, 180, 216, 0.08), transparent 26rem),
-    radial-gradient(circle at 96% 12%, rgba(216, 176, 107, 0.1), transparent 25rem);
+    radial-gradient(circle at 4% 0%, rgba(79,134,247,.07), transparent 26rem),
+    radial-gradient(circle at 96% 10%, rgba(103,198,179,.08), transparent 25rem);
+}
+
+/* ห้ามบังคับสีหัวข้อตรงนี้ เพราะหัวข้อที่อยู่บนการ์ดสีเข้มสืบทอดสีขาวมาจาก parent
+   ถ้าใส่ text-navy จะทับจนหัวข้อจมหายไปกับพื้นหลัง — ให้แต่ละหน้ากำหนดสีเอง */
+h1,h2,h3,h4 { color: inherit; font-weight: 600; line-height: 1.3; }
+h1 { font-size: clamp(1.35rem, 1.05rem + 1.4vw, 2rem); }
+h2 { font-size: clamp(1.1rem, .95rem + .8vw, 1.5rem); }
+img, svg, video { max-width: 100%; height: auto; }
+
+/* โฟกัสต้องเห็นชัดสำหรับผู้ใช้คีย์บอร์ด */
+:where(a,button,input,select,textarea,[tabindex]):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 ::selection {
-  background: rgba(0, 180, 216, 0.2);
-  color: #2B2D42;
+  background: rgba(79, 134, 247, 0.18);
+  color: #17345B;
+}
+
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .no-copy {
@@ -20,15 +55,23 @@ body {
   -webkit-touch-callout: none;
 }
 
+/* ช่องกรอกต้องเลือก/แก้ข้อความได้ตามปกติ ไม่งั้นค้นหาหรือแก้คำที่พิมพ์ผิดไม่ได้
+   (บางเบราว์เซอร์สืบทอด user-select: none ลงไปถึง input ด้วย) */
+.no-copy input,
+.no-copy textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 @layer components {
   .app-main {
     position: relative;
     isolation: isolate;
     overflow: hidden;
     background:
-      radial-gradient(circle at 92% 4%, rgba(0, 180, 216, 0.11), transparent 21rem),
-      radial-gradient(circle at 8% 88%, rgba(216, 176, 107, 0.12), transparent 24rem),
-      linear-gradient(180deg, #fbfdff 0%, #f7f9fc 55%, #f8fbff 100%);
+      radial-gradient(circle at 92% 4%, rgba(79,134,247,.08), transparent 21rem),
+      radial-gradient(circle at 8% 88%, rgba(103,198,179,.09), transparent 24rem),
+      linear-gradient(180deg, #FBFDFF 0%, #F7FAFC 55%, #F6FBFA 100%);
   }
 
   .app-main::before,
@@ -46,7 +89,7 @@ body {
     height: 18rem;
     top: 22%;
     right: -13rem;
-    background: rgba(0, 180, 216, 0.055);
+    background: rgba(79,134,247,.05);
   }
 
   .app-main::after {
@@ -54,29 +97,57 @@ body {
     height: 15rem;
     bottom: 6%;
     left: -11rem;
-    background: rgba(216, 176, 107, 0.07);
+    background: rgba(103,198,179,.06);
   }
 
   .app-card {
-    @apply min-w-0 rounded-2xl border border-graylight/25 bg-white/90 shadow-[0_12px_30px_rgba(43,45,66,0.07)] backdrop-blur-sm;
-    box-shadow: 0 12px 30px rgba(43, 45, 66, 0.07), 0 2px 0 rgba(255, 255, 255, 0.8) inset;
+    @apply min-w-0 rounded-3xl border border-line/70 bg-surface;
+    box-shadow: var(--shadow-sm);
   }
 
   .app-card-hover {
-    @apply transition duration-300 ease-out hover:-translate-y-1 hover:border-accent-cyan/45 hover:shadow-[0_18px_42px_rgba(43,45,66,0.13)];
+    @apply transition duration-200 ease-out hover:-translate-y-1 hover:border-accent-cyan/45;
     will-change: transform, box-shadow;
   }
 
+  .app-card-hover:hover { box-shadow: var(--shadow-md); }
+
   .app-section-heading {
-    @apply relative pl-3 before:absolute before:inset-y-1 before:left-0 before:w-1 before:rounded-full before:bg-gradient-to-b before:from-accent-cyan before:to-accent-gold;
+    @apply relative pl-3 before:absolute before:inset-y-1 before:left-0 before:w-1 before:rounded-full before:bg-gradient-to-b before:from-accent-cyan before:to-accent-teal;
   }
 
+  /* ปุ่มรอง / โครงร่าง ใช้ซ้ำได้ทั้งระบบ */
+  .btn-outline {
+    @apply inline-flex min-h-[46px] items-center justify-center gap-2 rounded-2xl border border-line bg-surface px-5 py-2.5 text-sm font-medium text-navy transition duration-200 hover:border-accent-cyan/50 hover:bg-accent-cyan/5 disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex min-h-[46px] items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium text-graydark transition duration-200 hover:bg-accent-cyan/10 hover:text-navy;
+  }
+
+  .btn-danger {
+    @apply inline-flex min-h-[46px] items-center justify-center gap-2 rounded-2xl bg-danger px-5 py-2.5 text-sm font-medium text-white transition duration-200 hover:brightness-105 disabled:opacity-50;
+  }
+
+  /* ฟอร์ม: ขอบมน 12px โฟกัสชัด ไม่ล้น container */
+  .field {
+    @apply w-full min-w-0 rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-navy outline-none transition duration-200;
+    @apply placeholder:text-graylight focus:border-accent-cyan focus:ring-4 focus:ring-accent-cyan/20;
+  }
+
+  .field-error { @apply border-danger focus:border-danger focus:ring-danger/20; }
+
+  /* โครงกระดูกตอนโหลดข้อมูล */
+  .skeleton { @apply animate-pulse rounded-2xl bg-slate-200/60; }
+
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-accent-cyan via-[#12abd1] to-[#168bb4] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(0,180,216,0.24)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_22px_rgba(0,180,216,0.32)] active:translate-y-0;
+    @apply inline-flex min-h-[46px] items-center justify-center gap-2 rounded-2xl bg-accent-cyan px-5 py-2.5 text-sm font-medium text-white transition duration-200 hover:brightness-[1.06] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
+    box-shadow: 0 10px 24px rgba(79,134,247,.28);
   }
 
   .btn-navy {
-    @apply inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-navy via-[#30365e] to-[#202b52] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(43,45,66,0.2)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_12px_22px_rgba(43,45,66,0.28)] active:translate-y-0;
+    @apply inline-flex min-h-[46px] items-center justify-center gap-2 rounded-2xl bg-navy px-5 py-2.5 text-sm font-medium text-white transition duration-200 hover:bg-[#1e4272] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
+    box-shadow: 0 10px 24px rgba(23,52,91,.2);
   }
 
   .animate-enter {

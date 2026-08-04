@@ -205,7 +205,7 @@ export default function LeaderboardPage() {
         </div>
       </section>
 
-      <section className="relative overflow-hidden rounded-3xl border border-amber-100 bg-[radial-gradient(circle_at_50%_0%,rgba(216,176,107,0.2),transparent_33%),linear-gradient(180deg,#fffdf8_0%,#f8fbfd_100%)] p-5 shadow-[0_14px_30px_rgba(43,45,66,0.06)] sm:p-7">
+      <section className="relative overflow-hidden rounded-3xl border border-amber-100 bg-[radial-gradient(circle_at_50%_0%,rgba(216,176,107,0.2),transparent_33%),linear-gradient(180deg,#fffdf8_0%,#f8fbfd_100%)] p-5 shadow-[0_14px_30px_rgba(30,64,100,0.06)] sm:p-7">
         <div className="mb-8 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-navy">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-700"><Crown size={19} fill="currentColor" /></span>

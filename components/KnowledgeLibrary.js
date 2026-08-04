@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { knowledgeArticles } from '@/lib/knowledge';
 import { knowledgeSubjectScopes } from '@/lib/knowledgeSyllabus';
+import { noCopyHandlers } from '@/lib/copyProtection';
 
 const subjectMeta = {
   english: { label: 'ภาษาอังกฤษ', icon: Languages, tone: 'text-violet-600', active: 'border-violet-500 text-violet-700', panel: 'border-violet-200 bg-violet-50/60', dot: 'bg-violet-500' },
@@ -229,7 +230,7 @@ export default function KnowledgeLibrary() {
     { id: 'practice', label: 'แนวฝึก', icon: ListChecks },
   ];
 
-  return <div className="pb-5">
+  return <div className="pb-5 no-copy" {...noCopyHandlers}>
     <header className="mb-5"><div className="flex flex-wrap items-end justify-between gap-3"><div><span className="inline-flex items-center gap-1.5 text-xs font-bold text-accent-cyan"><Sparkles size={14} />ขอบเขตการอ่านสำหรับนักเรียนนายสิบตำรวจ</span><h1 className="mt-1 text-2xl font-black tracking-tight text-navy sm:text-3xl">คลังความรู้</h1><p className="mt-1 max-w-2xl text-sm text-graydark/60">เลือกวิชา → เลือกหัวข้อย่อย → อ่านเฉพาะประเด็นที่ต้องใช้ทำข้อสอบ</p></div><span className="rounded-xl border border-graylight/25 bg-white px-3 py-2 text-xs font-semibold text-graydark/55">{catalogSynced ? 'ซิงก์หมวดจากคลังข้อสอบแล้ว' : 'อัปเดตตามขอบเขตสอบ'}</span></div></header>
 
     <section aria-label="เลือกวิชา" className="border-y border-graylight/25 bg-white"><div className="grid grid-cols-2 sm:flex sm:flex-wrap"><div className="hidden sm:block sm:flex-1" />{subjectOrder.map((id) => { const item = subjectMeta[id]; const Icon = item.icon; const active = id === subjectId; return <button key={id} type="button" onClick={() => selectSubject(id)} className={`relative flex min-w-0 items-center justify-center gap-2 border-b-2 px-2 py-3 text-xs font-bold transition sm:px-4 sm:text-sm ${active ? item.active : 'border-transparent text-graydark/55 hover:bg-slate-50 hover:text-navy'}`}><Icon size={16} className={active ? item.tone : 'text-graydark/35'} /><span className="truncate">{item.label}</span>{active && <span className={`absolute inset-x-3 -bottom-[2px] h-0.5 rounded-full ${item.dot}`} />}</button>; })}<div className="hidden sm:block sm:flex-1" /></div></section>

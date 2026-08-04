@@ -34,7 +34,7 @@ function AdminShell({ children, pathname }) {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_#dff7ff_0,_#f8fbff_36%,_#f3f6fb_100%)]">
       <header className="sticky top-0 z-30 border-b border-cyan-300/20 bg-gradient-to-r from-[#101d3d] via-[#152b55] to-[#087b9d] shadow-lg shadow-slate-900/15">
-        <div className="mx-auto flex min-h-[4.5rem] max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+        <div className="mx-auto flex min-h-[4.5rem] max-w-app items-center justify-between gap-4 px-4 sm:px-6">
           <Link href="/admin" className="flex items-center gap-3 text-white">
             <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-400 text-[#09213a] shadow-lg shadow-cyan-950/25"><ShieldCheck size={21} /></span>
             <span><span className="block text-base font-bold tracking-wide">POLREADY</span><span className="block text-[10px] font-semibold tracking-[0.2em] text-cyan-100/70">ADMIN COMMAND</span></span>
@@ -45,7 +45,7 @@ function AdminShell({ children, pathname }) {
           </div>
         </div>
       </header>
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-5 sm:px-6 lg:flex-row lg:gap-7 lg:py-8">
+      <div className="mx-auto flex w-full max-w-app flex-col gap-5 px-4 py-5 sm:px-6 lg:flex-row lg:gap-7 lg:py-8">
         <aside className="shrink-0 lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)] lg:w-64">
           <nav className="flex gap-2 overflow-x-auto rounded-3xl border border-white/10 bg-gradient-to-b from-[#12234a] via-[#182c51] to-[#101c38] p-2 shadow-xl shadow-slate-900/15 lg:h-full lg:flex-col lg:overflow-y-auto lg:p-3" aria-label="เมนูผู้ดูแลระบบ">
             <div className="hidden px-3 pb-2 pt-1 lg:block"><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-cyan-200/60">เนื้อหาและการสอบ</p></div>
@@ -73,7 +73,8 @@ export default function AppShell({ children }) {
       <div className="flex min-h-screen bg-[#f7f9fc]">
         <Sidebar />
         <main className="app-main min-w-0 flex-1 p-4 pb-28 pt-[6.5rem] sm:p-6 sm:pb-28 sm:pt-[6.5rem] lg:p-8">
-          <div className="relative z-10 animate-enter">{children}</div>
+          {/* container มาตรฐานอยู่ที่นี่ที่เดียว แต่ละหน้าจึงไม่ต้องตั้ง max-w เองให้เพี้ยนกัน */}
+          <div className="relative z-10 mx-auto w-full max-w-app animate-enter">{children}</div>
         </main>
       </div>
     </>

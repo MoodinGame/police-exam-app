@@ -2,9 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { SlidersHorizontal, Check } from 'lucide-react';
-import { subjects } from '@/lib/subjects';
-import { topics } from '@/lib/topics';
-import { subjectStyles } from '@/lib/subjectStyles';
+import { getSubjectStyle, subjectStyles } from '@/lib/subjectStyles';
 
 export const EMPTY_FILTER = { subjects: [], topics: [], status: 'all' };
 
@@ -38,11 +36,14 @@ function Checkbox({ checked, label, onChange, disabled = false, className = '' }
 
 function GroupedTopicFilter({ draft, setDraft, availableTopics, topicGroups }) {
   const groups = (topicGroups || [])
-    .map((group) => ({ ...group, topics: availableTopics.filter((topic) => topic.groupId === group.id) }))
+    .map((group) => ({ ...group, topics: availableTopics.filter((topic) => topic.parentId === group.rowId) }))
     .filter((group) => group.topics.length > 0);
-  const groupedTopicIds = new Set(groups.flatMap((group) => group.topics.map((topic) => topic.id)));
+  const groupedTopicIds = new Set([
+    ...groups.flatMap((group) => group.topics.map((topic) => topic.id)),
+    ...groups.map((group) => group.id),
+  ]);
   const ungroupedTopics = availableTopics.filter((topic) => !groupedTopicIds.has(topic.id));
-  if (ungroupedTopics.length) groups.push({ id: 'ungrouped', name: 'ยังไม่จัดหมวดหลัก', topics: ungroupedTopics });
+  if (ungroupedTopics.length) groups.push({ id: 'ungrouped', name: 'หัวข้ออื่น', topics: ungroupedTopics });
   const allTopicIds = groups.flatMap((group) => group.topics.map((topic) => topic.id));
   const allTopicsSelected = draft.topics.length === 0;
 
@@ -96,7 +97,9 @@ function GroupedTopicFilter({ draft, setDraft, availableTopics, topicGroups }) {
  * scopeSubjectId: ถ้าส่งมา แผงจะล็อกอยู่ในวิชานั้นวิชาเดียว
  * (ซ่อนคอลัมน์ "วิชา" และแสดงหมวดย่อยของวิชานั้นทันทีโดยไม่ต้องเลือกวิชาก่อน)
  */
-export default function PracticeFilter({ value, onChange, scopeSubjectId = null, topicItems = topics, topicGroups = [] }) {
+// subjectItems ต้องส่งมาจากหน้าเรียก เพราะรายชื่อวิชาจริงอยู่ในฐานข้อมูล
+// ค่าเริ่มต้นเป็นอาร์เรย์ว่าง ดีกว่า fallback ไป hardcode ที่อาจมีวิชาที่ถูกลบไปแล้ว
+export default function PracticeFilter({ value, onChange, scopeSubjectId = null, topicItems = [], subjectItems = [] }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const boxRef = useRef(null);
@@ -145,9 +148,9 @@ export default function PracticeFilter({ value, onChange, scopeSubjectId = null,
     ? topicItems.filter((t) => t.subjectId === scopeSubjectId)
     : topicItems.filter((t) => draft.subjects.includes(t.subjectId))
   ).sort((a, b) => a.name.localeCompare(b.name, 'th'));
-  const visibleGroups = topicGroups.filter((group) => (
-    scopeSubjectId ? group.subject_id === scopeSubjectId : draft.subjects.includes(group.subject_id)
-  ));
+  // หัวข้อที่มีหัวข้อย่อยอยู่ข้างใน = "หมวดหลัก" ในแผงตัวกรอง (อ่านจากโครงสร้าง parentId โดยตรง)
+  const parentRowIds = new Set(subTopics.map((t) => t.parentId).filter(Boolean));
+  const visibleGroups = subTopics.filter((t) => t.rowId && parentRowIds.has(t.rowId));
   const allSubjectsChecked = draft.subjects.length === 0;
 
   return (
@@ -210,11 +213,11 @@ export default function PracticeFilter({ value, onChange, scopeSubjectId = null,
                       label="ทั้งหมด"
                       onChange={() => setDraft((d) => ({ ...d, subjects: [], topics: [] }))}
                     />
-                    {subjects.map((s) => (
+                    {subjectItems.map((s) => (
                       <Checkbox
                         key={s.id}
                         checked={draft.subjects.includes(s.id)}
-                        label={subjectStyles[s.id].short}
+                        label={getSubjectStyle(s.id, s.shortName).short || s.name}
                         onChange={() => toggleSubject(s.id)}
                       />
                     ))}

@@ -3,6 +3,7 @@ import { canAccessExamSet, getUserAccess } from '@/lib/serverAccess';
 import { apiErrorResponse, requireCurrentUser } from '@/lib/serverUser';
 import { getMockExamTrack } from '@/lib/mockExamTracks';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { fetchAllRows } from '@/lib/supabasePaging';
 
 export const runtime = 'nodejs';
 
@@ -10,7 +11,7 @@ export async function GET() {
   try {
     const user = await requireCurrentUser();
     const supabase = getSupabaseAdmin();
-    const [access, setsResult, poolResult] = await Promise.all([
+    const [access, setsResult, poolRows] = await Promise.all([
       getUserAccess(supabase, user.id),
       supabase
         .from('exam_sets')
@@ -20,13 +21,12 @@ export async function GET() {
         .order('published_at', { ascending: false }),
       // Mock Exam สุ่มจากคลัง "แบบฝึกหัดรายวิชา" เท่านั้น เพื่อให้มีแหล่งข้อสอบเดียว
       // และไม่ต้องดูแลคำถาม Mock แยกอีกต่อไป
-      supabase.from('question_bank_questions').select('subject_id').eq('bank', 'practice').eq('is_active', true).limit(5000),
+      fetchAllRows(() => supabase.from('question_bank_questions').select('subject_id').eq('bank', 'practice').eq('is_active', true)),
     ]);
     if (setsResult.error) throw setsResult.error;
-    if (poolResult.error) throw poolResult.error;
 
     const poolCounts = new Map();
-    for (const row of poolResult.data || []) {
+    for (const row of poolRows) {
       poolCounts.set(row.subject_id, (poolCounts.get(row.subject_id) || 0) + 1);
     }
     const isTrackPoolReady = (track) => track.blueprint.every((entry) => (poolCounts.get(entry.subjectId) || 0) >= entry.questionCount);

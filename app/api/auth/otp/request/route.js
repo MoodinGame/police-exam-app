@@ -103,6 +103,15 @@ export async function POST(request) {
     if (registration && existingUser) {
       return NextResponse.json({ error: 'เบอร์มือถือนี้มีบัญชีอยู่แล้ว กรุณาเข้าสู่ระบบด้วย OTP' }, { status: 409 });
     }
+    // ตัดตั้งแต่ก่อนส่ง SMS ไม่งั้นบัญชีที่ถูกระงับยิงขอรหัสรัวได้ ทั้งที่ยืนยันตัวตนไม่ผ่านอยู่ดี
+    if (existingUser?.status && existingUser.status !== 'active') {
+      const reason = String(existingUser.suspended_reason || '').trim();
+      return NextResponse.json({
+        error: reason
+          ? `บัญชีนี้ถูกระงับการใช้งาน (${reason})`
+          : 'บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ',
+      }, { status: 403 });
+    }
   } catch {
     return NextResponse.json({ error: 'ระบบสมาชิกยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' }, { status: 503 });
   }

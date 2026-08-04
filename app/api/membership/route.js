@@ -27,17 +27,21 @@ export async function GET() {
   try {
     const user = await requireCurrentUser();
     const supabase = getSupabaseAdmin();
-    const [access, plans, accountResult] = await Promise.all([
+    const [access, plans, accountResult, resetResult] = await Promise.all([
       getUserAccess(supabase, user.id),
       getPublicPlans(supabase),
       supabase.from('app_settings').select('value').eq('key', 'payment_account').maybeSingle(),
+      supabase.from('app_settings').select('value').eq('key', 'progress_reset_at').maybeSingle(),
     ]);
 
     if (accountResult.error) throw accountResult.error;
+    if (resetResult.error) throw resetResult.error;
 
     return NextResponse.json({
       membership: membershipForResponse(access),
       isMember: access.isMember,
+      // เวลาที่แอดมินสั่งล้างสถิติล่าสุด — ฝั่ง client ใช้เทียบเพื่อล้าง localStorage ของตัวเอง
+      progressResetAt: resetResult.data?.value?.resetAt || null,
       plans: plans || getPublicFallbackPlans(),
       paymentAccount: normalizeAccount(accountResult.data?.value),
     });

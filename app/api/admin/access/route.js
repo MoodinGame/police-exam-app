@@ -30,7 +30,7 @@ export async function GET() {
     await requireAdmin();
     const supabase = getSupabaseAdmin();
     const [usersResult, membershipsResult, grantsResult, setsResult, plans] = await Promise.all([
-      supabase.from('app_users').select('id, phone, username, email, role, created_at').order('created_at', { ascending: false }).limit(500),
+      supabase.from('app_users').select('id, phone, username, email, role, status, suspended_reason, created_at').order('created_at', { ascending: false }).limit(500),
       supabase.from('memberships').select('user_id, plan_id, plan_name, amount, status, activated_at, expires_at, rejection_reason, admin_note, updated_at'),
       supabase.from('user_access_grants').select('id, user_id, resource_type, resource_id, feature_key, status, starts_at, expires_at, note, created_at').order('created_at', { ascending: false }).limit(1000),
       supabase.from('exam_sets').select('id, slug, title, bank, is_free, status').eq('bank', 'mock').eq('status', 'published').order('published_at', { ascending: false }).limit(300),
@@ -66,6 +66,32 @@ export async function PATCH(request) {
     const userId = String(body?.userId || '');
     if (!userId) throw requestError('ไม่พบผู้ใช้ที่ต้องการจัดการ');
     const supabase = getSupabaseAdmin();
+
+    // ระงับ / คืนสิทธิ์การใช้งานบัญชี — มีผลทันทีทุก API และล็อกอินใหม่ไม่ได้ด้วย
+    if (action === 'accountStatus') {
+      const suspend = body?.suspend === true;
+      // กันแอดมินระงับบัญชีตัวเอง แล้วล็อกตัวเองออกจากระบบจนแก้อะไรไม่ได้
+      if (suspend && userId === admin.id) throw requestError('ระงับบัญชีผู้ดูแลที่กำลังใช้งานอยู่ไม่ได้');
+
+      const { data: target, error: targetError } = await supabase
+        .from('app_users')
+        .select('id, role')
+        .eq('id', userId)
+        .maybeSingle();
+      if (targetError) throw targetError;
+      if (!target) throw requestError('ไม่พบบัญชีผู้ใช้', 404);
+      if (suspend && target.role === 'admin') throw requestError('ระงับบัญชีผู้ดูแลระบบไม่ได้');
+
+      const reason = String(body?.reason || '').trim().slice(0, 300);
+      const { error } = await supabase
+        .from('app_users')
+        .update(suspend
+          ? { status: 'suspended', suspended_reason: reason || 'ผู้ดูแลระงับการใช้งาน', session_id: null }
+          : { status: 'active', suspended_reason: null })
+        .eq('id', userId);
+      if (error) throw error;
+      return NextResponse.json({ ok: true, message: suspend ? 'ระงับบัญชีแล้ว' : 'คืนสิทธิ์การใช้งานแล้ว' });
+    }
 
     if (action === 'membership') {
       const planId = String(body?.planId || 'free');

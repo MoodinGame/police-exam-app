@@ -12,9 +12,8 @@ import {
   Shuffle,
 } from 'lucide-react';
 import { questions } from '@/lib/questions';
-import { subjects } from '@/lib/subjects';
-import { subjectStyles } from '@/lib/subjectStyles';
-import { topics as allTopics, topicsBySubject } from '@/lib/topics';
+import { useCatalog } from '@/lib/subjectCatalog';
+import { getSubjectStyle } from '@/lib/subjectStyles';
 import { confirmIncompleteAnswers } from '@/lib/sweetAlert';
 import { useExamCatalog } from '@/lib/useExamCatalog';
 import { useMembershipStatus } from '@/lib/useMembershipStatus';
@@ -51,12 +50,12 @@ function countOptionsFor(availableCount) {
   return availableCount < 10 ? QUESTION_OPTIONS : QUESTION_OPTIONS.slice(1);
 }
 
-function SubjectSelector({ selectedSubjectId, onSelect }) {
+function SubjectSelector({ selectedSubjectId, onSelect, subjects }) {
   return (
     <div className="grid grid-cols-2 gap-2 sm:gap-3">
       {subjects.map((subject) => {
         const selected = subject.id === selectedSubjectId;
-        const style = subjectStyles[subject.id];
+        const style = getSubjectStyle(subject.id, subject.shortName);
         const Icon = style.icon;
 
         return (
@@ -67,7 +66,7 @@ function SubjectSelector({ selectedSubjectId, onSelect }) {
             onClick={() => onSelect(subject.id)}
             className={`flex min-h-[3.25rem] items-center gap-2 rounded-2xl border px-3 py-3 text-left text-xs font-bold transition sm:gap-3 sm:px-4 sm:text-sm ${
               selected
-                ? 'border-navy bg-navy text-white shadow-[0_8px_18px_rgba(18,31,62,0.16)]'
+                ? 'border-navy bg-navy text-white shadow-[0_8px_18px_rgba(30,64,100,0.16)]'
                 : 'border-graylight/35 bg-white text-graydark hover:border-navy/35 hover:bg-slate-50'
             }`}
           >
@@ -90,19 +89,22 @@ function Setup({
   setShowAnswers,
   availableCount,
   availableTopics,
-  topicGroups,
+
   selectedGroupId,
   setSelectedGroupId,
   onSelectSubject,
   onStart,
   isUnlimited,
 }) {
-  const subject = subjects.find((item) => item.id === subjectId);
-  const subjectTopics = availableTopics || topicsBySubject(subjectId);
-  const subjectGroups = (topicGroups || []).filter((group) => group.subject_id === subjectId);
+  const { subjects, findSubject } = useCatalog();
+  const subject = findSubject(subjectId);
+  const subjectTopics = availableTopics || [];
+  // หัวข้อที่มีหัวข้อย่อยข้างใน = "หมวดหลัก" ให้เลือกทั้งกลุ่มได้
+  const parentRowIds = new Set(subjectTopics.map((topic) => topic.parentId).filter(Boolean));
+  const subjectGroups = subjectTopics.filter((topic) => topic.rowId && parentRowIds.has(topic.rowId));
   const selectedGroup = subjectGroups.find((group) => group.id === selectedGroupId) || null;
   const selectedGroupTopics = selectedGroup
-    ? subjectTopics.filter((topic) => topic.groupId === selectedGroup.id)
+    ? subjectTopics.filter((topic) => topic.parentId === selectedGroup.rowId)
     : subjectTopics;
   const countOptions = countOptionsFor(availableCount);
   const selectedTopicNames = subjectTopics
@@ -119,8 +121,9 @@ function Setup({
       setSelectedTopics([]);
       return;
     }
+    const group = subjectGroups.find((item) => item.id === groupId);
     setSelectedTopics(subjectTopics
-      .filter((topic) => topic.groupId === groupId && topic.available)
+      .filter((topic) => topic.parentId === group?.rowId && topic.available)
       .map((topic) => topic.id));
   }
 
@@ -139,11 +142,11 @@ function Setup({
         <p className="mt-1 text-sm text-graydark/60">สุ่มข้อสอบจากหัวข้อที่เลือก ฝึกได้ทุกเมื่อ</p>
       </header>
 
-      <section className="app-card mt-7 overflow-hidden p-5 shadow-[0_12px_30px_rgba(18,31,62,0.08)] sm:p-8">
+      <section className="app-card mt-7 overflow-hidden p-5 shadow-[0_16px_44px_rgba(30,64,100,0.10)] sm:p-8">
         <div>
           <p className="text-xs font-bold text-graydark/55">เลือกวิชา</p>
           <div className="mt-3">
-            <SubjectSelector selectedSubjectId={subjectId} onSelect={onSelectSubject} />
+            <SubjectSelector selectedSubjectId={subjectId} onSelect={onSelectSubject} subjects={subjects} />
           </div>
         </div>
 
@@ -163,7 +166,7 @@ function Setup({
               <select
                 value={selectedGroupId}
                 onChange={(event) => selectGroup(event.target.value)}
-                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-navy outline-none focus:border-accent-cyan focus:ring-4 focus:ring-cyan-500/10"
+                className="mt-1.5 field font-semibold"
               >
                 <option value="">ทุกหมวดหลัก</option>
                 {subjectGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
@@ -175,7 +178,7 @@ function Setup({
               <select
                 value={selectedTopics.length === 1 ? selectedTopics[0] : ''}
                 onChange={(event) => selectTopic(event.target.value)}
-                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-navy outline-none focus:border-accent-cyan focus:ring-4 focus:ring-cyan-500/10"
+                className="mt-1.5 field font-semibold"
               >
                 <option value="">{selectedGroup ? `ทุกหัวข้อใน ${selectedGroup.name}` : 'ทุกหมวดย่อย'}</option>
                 {selectedGroupTopics.map((topic) => (
@@ -203,7 +206,7 @@ function Setup({
                     onClick={() => setCount(value)}
                     className={`rounded-2xl border px-3 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-35 ${
                       selected
-                        ? 'border-navy bg-navy text-white shadow-[0_8px_18px_rgba(18,31,62,0.14)]'
+                        ? 'border-navy bg-navy text-white shadow-[0_8px_18px_rgba(30,64,100,0.14)]'
                         : 'border-graylight/35 bg-white text-navy hover:border-navy/35'
                     }`}
                   >
@@ -294,6 +297,7 @@ function Navigator({ quiz, current, answers, onSelect, onFinish }) {
 }
 
 function QuizRunner({ quiz, showAnswers, onRestart, onShuffleAgain, onCompleted }) {
+  const { findSubject } = useCatalog();
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState({});
   const [flagged, setFlagged] = useState({});
@@ -304,8 +308,8 @@ function QuizRunner({ quiz, showAnswers, onRestart, onShuffleAgain, onCompleted 
   const answeredCount = Object.keys(answers).length;
   const score = quiz.reduce((total, item) => total + (answers[item.id] === item.answerIndex ? 1 : 0), 0);
   const progress = Math.round((answeredCount / quiz.length) * 100);
-  const subject = subjects.find((item) => item.id === question.subjectId);
-  const style = subjectStyles[question.subjectId];
+  const subject = findSubject(question.subjectId);
+  const style = getSubjectStyle(question.subjectId);
   const SubjectIcon = style.icon;
 
   function selectAnswer(choiceIndex) {
@@ -335,7 +339,7 @@ function QuizRunner({ quiz, showAnswers, onRestart, onShuffleAgain, onCompleted 
   }
 
   return (
-    <div className="mx-auto max-w-5xl pb-8">
+    <div className="pb-8">
       <header className="overflow-hidden rounded-2xl border border-graylight/25 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
@@ -386,13 +390,14 @@ function QuizRunner({ quiz, showAnswers, onRestart, onShuffleAgain, onCompleted 
 }
 
 function FinishedResult({ quiz, answers, elapsedSeconds, onBack, onShuffleAgain }) {
+  const { findSubject, findTopic } = useCatalog();
   const score = quiz.reduce((total, item) => total + (answers[item.id] === item.answerIndex ? 1 : 0), 0);
   const subjectId = quiz[0]?.subjectId || null;
-  const subjectName = subjects.find((item) => item.id === subjectId)?.name || null;
+  const subjectName = findSubject(subjectId)?.name || null;
   const history = useAttemptHistory({ bank: 'random', subjectId });
 
   const items = quiz.map((item) => {
-    const topicName = item.topicId ? allTopics.find((topic) => topic.id === item.topicId)?.name : null;
+    const topicName = item.topicId ? findTopic(item.topicId)?.name || null : null;
     return {
       id: item.id,
       question: item.question,
@@ -425,6 +430,7 @@ function FinishedResult({ quiz, answers, elapsedSeconds, onBack, onShuffleAgain 
 }
 
 export default function RandomQuizPage() {
+  const { findSubject } = useCatalog();
   const [subjectId, setSubjectId] = useState('english');
   const [selectedTopics, setSelectedTopics] = useState([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
@@ -440,16 +446,16 @@ export default function RandomQuizPage() {
       .filter((topic) => topic.subject_id === subjectId)
       .map((topic) => ({
         id: topic.legacy_id || topic.id,
+        rowId: topic.id,
+        parentId: topic.parent_id || '',
+        sortOrder: topic.sort_order ?? 0,
         name: topic.name,
         available: true,
-        groupId: topic.group_id || '',
-      }));
-    return databaseTopics.length ? databaseTopics : topicsBySubject(subjectId);
+      }))
+      .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name, 'th'));
+    // ใช้เฉพาะหมวดย่อยที่มีอยู่จริงในฐานข้อมูล ไม่ fallback ไปรายการ hardcode เดิม
+    return databaseTopics;
   }, [catalog, subjectId]);
-  const topicGroups = useMemo(
-    () => (catalog?.topicGroups || []).filter((group) => group.subject_id === subjectId),
-    [catalog, subjectId],
-  );
 
   useEffect(() => {
     let active = true;
@@ -504,7 +510,7 @@ export default function RandomQuizPage() {
   }
 
   async function saveRandomAttempt({ quiz: completedQuiz, answers: completedAnswers }) {
-    const subject = subjects.find((item) => item.id === subjectId);
+    const subject = findSubject(subjectId);
     try {
       await fetch('/api/attempts', {
         method: 'POST',
@@ -535,5 +541,5 @@ export default function RandomQuizPage() {
     );
   }
 
-  return <Setup subjectId={subjectId} selectedTopics={selectedTopics} setSelectedTopics={setSelectedTopics} count={count} setCount={setCount} showAnswers={showAnswers} setShowAnswers={setShowAnswers} availableCount={availableCount} availableTopics={availableTopics} topicGroups={topicGroups} selectedGroupId={selectedGroupId} setSelectedGroupId={setSelectedGroupId} onSelectSubject={selectSubject} onStart={start} isUnlimited={isUnlimited} />;
+  return <Setup subjectId={subjectId} selectedTopics={selectedTopics} setSelectedTopics={setSelectedTopics} count={count} setCount={setCount} showAnswers={showAnswers} setShowAnswers={setShowAnswers} availableCount={availableCount} availableTopics={availableTopics} selectedGroupId={selectedGroupId} setSelectedGroupId={setSelectedGroupId} onSelectSubject={selectSubject} onStart={start} isUnlimited={isUnlimited} />;
 }

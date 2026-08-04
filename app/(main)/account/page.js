@@ -23,9 +23,60 @@ function todayValue() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function activePlan(membership, plan) {
-  if (membership?.status !== 'active' || membership?.plan_id !== plan.id) return false;
+// เปิดให้ต่ออายุล่วงหน้าเมื่อเหลือไม่เกินกี่วัน
+const RENEW_WINDOW_DAYS = 30;
+
+function hasActiveMembership(membership) {
+  if (membership?.status !== 'active') return false;
   return !membership.expires_at || new Date(membership.expires_at) > new Date();
+}
+
+function daysUntil(value) {
+  if (!value) return null;
+  return Math.ceil((new Date(value).getTime() - Date.now()) / 86400000);
+}
+
+// ลำดับชั้นของแพ็กเกจใช้ราคาเป็นตัวตัดสิน (ฟรี = 0 = ต่ำสุด) ถ้าราคาเท่ากันค่อยดู sort_order
+function planRank(plan) {
+  return (Number(plan?.price) || 0) * 1000 + (Number(plan?.sortOrder) || 0);
+}
+
+/**
+ * ตัดสินสถานะปุ่มของการ์ดแพ็กเกจแต่ละใบ
+ * แยกออกมาเป็นฟังก์ชันบริสุทธิ์เพื่อให้ตรรกะสถานะทั้งหมดอยู่ที่เดียว ตรวจสอบและแก้ไขได้ง่าย
+ */
+function planCardState(membership, plan, allPlans = []) {
+  const paid = plan.paymentEnabled && plan.grantType === 'membership';
+
+  // ชุดข้อสอบเฉพาะกิจไม่ได้อยู่ในลำดับชั้นสมาชิก แอดมินเป็นคนเปิดสิทธิ์ให้เอง
+  if (plan.grantType === 'exam_set') return { kind: 'exam_set', label: 'ผู้ดูแลจะเปิดสิทธิ์เฉพาะชุดให้', disabled: true };
+
+  const isActive = hasActiveMembership(membership);
+  const currentPlan = isActive ? allPlans.find((item) => item.id === membership.plan_id) : null;
+
+  if (isActive && membership.plan_id === plan.id) {
+    const daysLeft = daysUntil(membership.expires_at);
+    // ใกล้หมดอายุต้องกดต่ออายุได้ ไม่ใช่ปิดปุ่มทิ้งไว้จนสมาชิกจ่ายเงินต่อไม่ได้
+    if (paid && daysLeft !== null && daysLeft <= RENEW_WINDOW_DAYS) {
+      return { kind: 'renew', label: daysLeft > 0 ? `ต่ออายุ (เหลือ ${daysLeft} วัน)` : 'ต่ออายุตอนนี้', disabled: false, highlight: true };
+    }
+    return { kind: 'current', label: 'แพ็กเกจปัจจุบัน', disabled: true };
+  }
+
+  if (!isActive) {
+    // ยังไม่มีสมาชิก = อยู่บนแพ็กเกจฟรีจริง ๆ จึงต้องขึ้น "แพ็กเกจปัจจุบัน" ที่การ์ดฟรี
+    if (plan.billingType === 'free') return { kind: 'current', label: 'แพ็กเกจปัจจุบัน', disabled: true };
+    if (paid) return { kind: 'buy', label: `เลือก ${plan.name}`, disabled: false };
+    return { kind: 'unavailable', label: 'ยังไม่เปิดให้สมัคร', disabled: true };
+  }
+
+  if (!paid) return { kind: 'unavailable', label: 'ไม่สามารถเปลี่ยนไปแพ็กเกจนี้', disabled: true };
+
+  const diff = planRank(plan) - planRank(currentPlan || {});
+  if (diff > 0) return { kind: 'upgrade', label: `อัปเกรดเป็น ${plan.name}`, disabled: false, highlight: true };
+  // กันซื้อแพ็กเกจที่ให้สิทธิ์ต่ำกว่าของที่ใช้อยู่ เพราะจ่ายแล้วได้สิทธิ์ลดลง
+  if (diff < 0) return { kind: 'downgrade_blocked', label: 'สิทธิ์ต่ำกว่าแพ็กเกจปัจจุบัน', disabled: true };
+  return { kind: 'buy', label: `เปลี่ยนเป็น ${plan.name}`, disabled: false };
 }
 
 export default function AccountPage() {
@@ -127,12 +178,12 @@ export default function AccountPage() {
   };
 
   return (
-    <div className="max-w-5xl">
+    <div>
       <header className="mb-8">
         <p className="mb-1 text-sm font-medium text-accent-cyan">ACCOUNT & MEMBERSHIP</p>
         <h1 className="text-2xl font-semibold text-navy sm:text-3xl">สมาชิกและแพ็กเกจ</h1>
         <p className="mt-1 text-graydark/60">เริ่มทดลองใช้แบบฟรีก่อน แล้วเลือกสิทธิ์ที่เหมาะกับการเตรียมสอบของคุณ</p>
-        <Link href="/settings" className="mt-4 inline-flex items-center gap-2 rounded-xl border border-graylight/30 bg-white px-3.5 py-2 text-sm font-semibold text-navy shadow-sm transition hover:border-accent-cyan hover:text-accent-cyan">แก้ไขโปรไฟล์ <span aria-hidden="true">→</span></Link>
+        <Link href="/settings" className="mt-4 inline-flex items-center gap-2 btn-outline">แก้ไขโปรไฟล์ <span aria-hidden="true">→</span></Link>
       </header>
 
       {error && <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
@@ -169,19 +220,33 @@ function MembershipPlans({ membership, plans, selectedPlanId, onSelectPlan }) {
     }
   };
   return <section className="mt-6" aria-labelledby="membership-plans-title"><div className="mb-5"><p className="text-sm font-medium text-accent-cyan">CHOOSE YOUR ACCESS</p><h2 id="membership-plans-title" className="mt-1 text-xl font-semibold text-navy sm:text-2xl">เริ่มฟรี แล้วค่อยเลือกสิทธิ์ที่ใช่</h2><p className="mt-1 text-sm text-graydark/60">แพ็กเกจและขอบเขตสิทธิ์จัดการโดยผู้ดูแลจากหลังบ้าน จึงอัปเดตราคาและสิทธิประโยชน์ได้โดยไม่ต้องแก้หน้าเว็บ</p></div>
-    {plans.length === 0 ? <div className="h-72 animate-pulse rounded-2xl bg-graylight/10" /> : <div className="grid gap-5 lg:grid-cols-3">{plans.map((plan) => <PlanCard key={plan.id} plan={plan} isCurrent={activePlan(membership, plan)} isSelected={selectedPlanId === plan.id} onChoose={() => scrollToPayment(plan)} />)}</div>}
+    {plans.length === 0 ? <div className="h-72 skeleton" /> : <div className="grid gap-5 lg:grid-cols-3">{plans.map((plan) => <PlanCard key={plan.id} plan={plan} state={planCardState(membership, plan, plans)} isSelected={selectedPlanId === plan.id} onChoose={() => scrollToPayment(plan)} />)}</div>}
   </section>;
 }
 
-function PlanCard({ plan, isCurrent, isSelected, onChoose }) {
-  const paid = plan.paymentEnabled && plan.grantType === 'membership';
+function PlanCard({ plan, state, isSelected, onChoose }) {
   const premium = plan.isFeatured;
-  return <article className={`relative flex min-h-[25rem] flex-col rounded-2xl border p-6 transition ${premium ? 'border-2 border-accent-cyan bg-[radial-gradient(circle_at_100%_0%,rgba(0,180,216,0.28),transparent_42%),linear-gradient(145deg,#2B2D42,#1f2239)] text-white shadow-[0_18px_42px_rgba(43,45,66,0.24)]' : isSelected ? 'border-accent-cyan bg-cyan-50/30' : 'border-graylight/25 bg-white'}`}>
+  return <article className={`relative flex min-h-[25rem] flex-col rounded-2xl border p-6 transition ${premium ? 'border-2 border-accent-cyan bg-[radial-gradient(circle_at_100%_0%,rgba(79,134,247,0.28),transparent_42%),linear-gradient(145deg,#2B2D42,#1f2239)] text-white shadow-[0_18px_42px_rgba(30,64,100,0.24)]' : isSelected ? 'border-accent-cyan bg-cyan-50/30' : 'border-graylight/25 bg-white'}`}>
     {plan.isFeatured && <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-accent-cyan px-3 py-1 text-xs font-semibold text-white">แนะนำ</span>}
     <div className={`grid h-11 w-11 place-items-center rounded-xl ${premium ? 'bg-white/10 text-accent-cyan' : 'bg-accent-cyan/10 text-accent-cyan'}`}>{plan.grantType === 'exam_set' ? <FileImage size={21} /> : plan.billingType === 'free' ? <Layers size={21} /> : <ShieldCheck size={21} />}</div>
     <h3 className={`mt-5 text-xl font-semibold ${premium ? 'text-white' : 'text-navy'}`}>{plan.name}</h3><p className={`mt-1 text-3xl font-bold ${premium ? 'text-white' : 'text-navy'}`}>{formatCurrency(plan.price)}{plan.durationDays && <span className={`text-sm font-medium ${premium ? 'text-white/60' : 'text-graydark/55'}`}> / {plan.durationDays} วัน</span>}</p><p className={`mt-2 min-h-10 text-sm ${premium ? 'text-white/65' : 'text-graydark/55'}`}>{plan.description || 'สิทธิ์ตามที่ผู้ดูแลกำหนด'}</p>
     <ul className={`mt-6 flex-1 space-y-3 text-sm ${premium ? 'text-white/80' : 'text-graydark/70'}`}>{(plan.features || []).map((feature) => <li key={feature} className="flex gap-2"><CheckCircle2 size={16} className="mt-0.5 shrink-0 text-accent-green" />{feature}</li>)}</ul>
-    {isCurrent ? <button type="button" disabled className={`mt-7 w-full rounded-xl px-4 py-3 text-sm font-semibold ${premium ? 'bg-accent-gold text-navy' : 'bg-graylight/15 text-graydark/45'}`}>แพ็กเกจปัจจุบัน</button> : paid ? <button type="button" onClick={onChoose} className={`mt-7 w-full rounded-xl px-4 py-3 text-sm font-semibold ${premium ? 'bg-accent-gold text-navy hover:brightness-105' : 'bg-navy text-white hover:bg-navy/90'}`}>เลือก {plan.name}</button> : plan.grantType === 'exam_set' ? <p className={`mt-7 rounded-xl px-4 py-3 text-center text-sm font-semibold ${premium ? 'bg-white/10 text-white/75' : 'bg-graylight/10 text-graydark/60'}`}>ผู้ดูแลจะเปิดสิทธิ์เฉพาะชุดให้</p> : <button type="button" disabled className="mt-7 w-full rounded-xl bg-graylight/15 px-4 py-3 text-sm font-semibold text-graydark/45">เริ่มใช้งานฟรี</button>}
+    {state.kind === 'exam_set'
+      ? <p className={`mt-7 rounded-xl px-4 py-3 text-center text-sm font-semibold ${premium ? 'bg-white/10 text-white/75' : 'bg-graylight/10 text-graydark/60'}`}>{state.label}</p>
+      : <button
+          type="button"
+          disabled={state.disabled}
+          onClick={state.disabled ? undefined : onChoose}
+          className={`mt-7 w-full rounded-xl px-4 py-3 text-sm font-semibold transition ${
+            state.disabled
+              ? premium ? 'cursor-not-allowed bg-white/10 text-white/60' : 'cursor-not-allowed bg-graylight/15 text-graydark/45'
+              : state.highlight
+                ? 'bg-accent-gold text-navy hover:brightness-105'
+                : premium ? 'bg-accent-gold text-navy hover:brightness-105' : 'bg-navy text-white hover:bg-navy/90'
+          }`}
+        >{state.label}</button>}
+    {state.kind === 'renew' && <p className={`mt-2 text-center text-xs font-medium ${premium ? 'text-white/70' : 'text-amber-700'}`}>แพ็กเกจกำลังจะหมดอายุ ต่ออายุได้เลย</p>}
+    {state.kind === 'downgrade_blocked' && <p className={`mt-2 text-center text-xs ${premium ? 'text-white/60' : 'text-graydark/50'}`}>ใช้แพ็กเกจที่สูงกว่านี้อยู่แล้ว</p>}
   </article>;
 }
 
@@ -198,7 +263,7 @@ function LoginRequired() {
 }
 
 function MembershipStatus({ membership }) {
-  if (!membership) return <div className="h-28 animate-pulse rounded-2xl bg-graylight/10" />;
+  if (!membership) return <div className="h-28 skeleton" />;
   const states = {
     inactive: { title: 'สมาชิกฟรี', text: 'คุณเริ่มทดลองใช้แบบฝึกหัดฟรีได้แล้ว และอัปเกรดสิทธิ์ได้ทุกเมื่อ', icon: CheckCircle2, color: 'text-graydark/60', surface: 'border-graylight/25 bg-graylight/10' },
     pending: { title: 'กำลังตรวจสอบสลิป', text: `ส่งคำขอเมื่อ ${formatDate(membership.submitted_at, true)} ทีมงานจะแจ้งผลหลังตรวจสอบ`, icon: Clock3, color: 'text-amber-700', surface: 'border-amber-200 bg-amber-50' },

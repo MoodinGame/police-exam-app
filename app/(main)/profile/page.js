@@ -3,9 +3,8 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Flame, Trophy, CalendarDays, Target, ListChecks, BookA, Rocket, BookOpenCheck, Medal, Compass, LockKeyhole } from 'lucide-react';
-import { subjects } from '@/lib/subjects';
-import { topics } from '@/lib/topics';
-import { subjectStyles } from '@/lib/subjectStyles';
+import { useCatalog } from '@/lib/subjectCatalog';
+import { getSubjectStyle } from '@/lib/subjectStyles';
 import {
   getOverview,
   getStreaks,
@@ -126,6 +125,8 @@ function buildProfileDataFromStats(stats, vocabularyCards = fallbackVocabularyCa
 
 export default function ProfilePage() {
   const [data, setData] = useState(null);
+  // ต้องเรียกก่อน early return ด้านล่าง ไม่งั้นผิดกฎลำดับ hook
+  const { subjects, findTopic } = useCatalog();
 
   // อ่าน localStorage หลัง mount เท่านั้น เพื่อไม่ให้ markup ตอน SSR กับตอน hydrate ต่างกัน
   useEffect(() => {
@@ -188,7 +189,7 @@ export default function ProfilePage() {
     .map(([id, v]) => ({
       ...v,
       id,
-      topic: topics.find((t) => t.id === id) || {
+      topic: findTopic(id) || {
         id,
         name: v.name || 'หัวข้อที่ยังไม่ระบุชื่อ',
         subjectId: v.subjectId,
@@ -291,7 +292,7 @@ export default function ProfilePage() {
                 const a = subjectAcc[s.id];
                 const pct = a?.pct ?? null;
                 const label = accuracyLabel(pct);
-                const style = subjectStyles[s.id];
+                const style = getSubjectStyle(s.id, s.shortName);
                 return (
                   <li key={s.id}>
                     <div className="flex items-center justify-between gap-3 mb-1.5">

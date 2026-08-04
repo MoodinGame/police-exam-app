@@ -5,7 +5,7 @@ import ProfileEditor from '@/components/ProfileEditor';
 export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl pb-6">
-      <header className="rounded-3xl border border-navy/10 bg-[radial-gradient(circle_at_92%_0%,rgba(0,180,216,0.18),transparent_32%),linear-gradient(135deg,#20395e,#18254a)] px-5 py-6 text-white shadow-[0_16px_34px_rgba(18,31,62,0.16)] sm:px-7 sm:py-7">
+      <header className="rounded-3xl border border-navy/10 bg-[radial-gradient(circle_at_92%_0%,rgba(79,134,247,0.18),transparent_32%),linear-gradient(135deg,#20395e,#18254a)] px-5 py-6 text-white shadow-[0_16px_34px_rgba(30,64,100,0.16)] sm:px-7 sm:py-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/12 text-accent-cyan ring-1 ring-white/15"><UserRound size={22} /></span><div><p className="text-xs font-semibold tracking-[0.16em] text-white/55">PERSONAL SETTINGS</p><h1 className="mt-1 text-2xl font-semibold">แก้ไขโปรไฟล์</h1><p className="mt-1 text-sm text-white/65">จัดการชื่อผู้ใช้และอีเมลสำหรับบัญชีของคุณ</p></div></div>
           <Link href="/account" className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/8 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/15"><ArrowLeft size={16} />สมาชิกและแพ็กเกจ</Link>

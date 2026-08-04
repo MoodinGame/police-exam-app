@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { apiErrorResponse, requireAdmin } from '@/lib/serverUser';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { fetchAllRows } from '@/lib/supabasePaging';
 import { getMockExamTrack } from '@/lib/mockExamTracks';
 import { topics as legacyTopics } from '@/lib/topics';
 
@@ -13,9 +14,11 @@ const SET_STATUSES = new Set(['draft', 'published', 'archived']);
 const ANNOUNCEMENT_TONES = new Set(['info', 'success', 'warning', 'important']);
 const ANNOUNCEMENT_AUDIENCES = new Set(['all', 'free', 'member']);
 
-function requestError(message, status = 400) {
+function requestError(message, status = 400, details = null) {
   const error = new Error(message);
   error.status = status;
+  // details ส่งต่อไปให้หน้าบ้านตัดสินใจได้ เช่น 409 แล้วจะเสนอให้ลบพร้อมหัวข้อย่อยไหม
+  if (details) error.details = details;
   return error;
 }
 
@@ -175,62 +178,107 @@ async function writeAudit(supabase, adminId, action, entityType, entityId, detai
   });
 }
 
+const TOPIC_COLUMNS = 'id, legacy_id, subject_id, parent_id, name, description, sort_order, is_active, is_free_practice';
+// ความลึกสูงสุดของหัวข้อย่อย กันสร้างซ้อนจนหน้าบ้านแสดงผลไม่ไหว
+const MAX_TOPIC_DEPTH = 5;
+
+function hierarchySchemaError() {
+  return requestError('ยังไม่ได้ติดตั้งโครงสร้างหมวดวิชาแบบลำดับชั้น กรุณารัน migration 20260803_category_hierarchy.sql ใน Supabase ก่อน', 503);
+}
+
 function parseTopicInput(body) {
   const subjectId = normalizeText(body.subjectId, 80);
   const name = normalizeText(body.name, 160);
   const description = normalizeText(body.description, 800) || null;
-  const groupId = normalizeOptionalId(body.groupId);
-  if (!subjectId || !name) throw requestError('กรุณาเลือกวิชาและระบุชื่อหมวดย่อย');
-  return { subject_id: subjectId, name, description, group_id: groupId };
+  const parentId = normalizeOptionalId(body.parentId);
+  const sortOrder = Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0;
+  if (!subjectId || !name) throw requestError('กรุณาเลือกวิชาและระบุชื่อหัวข้อ');
+  return {
+    subject_id: subjectId,
+    name,
+    description,
+    parent_id: parentId,
+    sort_order: sortOrder,
+    is_free_practice: body.isFreePractice === true,
+  };
 }
 
-async function validateTopicGroup(supabase, groupId, subjectId) {
-  if (!groupId) return null;
-  const { data, error } = await supabase
-    .from('content_topic_groups')
-    .select('id, subject_id, is_active')
-    .eq('id', groupId)
-    .maybeSingle();
-  if (error) {
-    if (isOptionalHierarchySchemaError(error)) {
-      throw requestError('ยังไม่ได้ติดตั้งโครงสร้างหมวดหลัก กรุณารัน migration 20260803_topic_groups.sql ใน Supabase ก่อน', 503);
+// หัวข้อแม่ต้องอยู่วิชาเดียวกัน และห้ามผูกให้เป็นลูกของตัวเอง/ลูกหลานตัวเอง (จะกลายเป็นวงวน)
+async function validateTopicParent(supabase, parentId, subjectId, selfId = null) {
+  if (!parentId) return 0;
+  if (selfId && parentId === selfId) throw requestError('ตั้งหัวข้อให้เป็นหัวข้อย่อยของตัวเองไม่ได้');
+
+  let depth = 0;
+  let cursor = parentId;
+  while (cursor) {
+    const { data, error } = await supabase
+      .from('content_topics')
+      .select('id, subject_id, parent_id, is_active')
+      .eq('id', cursor)
+      .maybeSingle();
+    if (error) {
+      if (isOptionalHierarchySchemaError(error)) throw hierarchySchemaError();
+      throw error;
     }
-    throw error;
+    if (!data) throw requestError('ไม่พบหัวข้อหลักที่เลือก');
+    if (depth === 0) {
+      if (!data.is_active) throw requestError('หัวข้อหลักที่เลือกถูกปิดใช้งานอยู่');
+      if (data.subject_id !== subjectId) throw requestError('หัวข้อหลักที่เลือกไม่ได้อยู่ในวิชานี้');
+    }
+    if (selfId && data.id === selfId) throw requestError('ย้ายหัวข้อไปอยู่ใต้หัวข้อย่อยของตัวเองไม่ได้');
+    depth += 1;
+    if (depth > MAX_TOPIC_DEPTH) throw requestError(`สร้างหัวข้อย่อยได้ลึกสุด ${MAX_TOPIC_DEPTH} ชั้น`);
+    cursor = data.parent_id;
   }
-  if (!data || !data.is_active) throw requestError('ไม่พบหมวดหลักที่เลือก หรือหมวดหลักนี้ถูกปิดใช้งานแล้ว');
-  if (data.subject_id !== subjectId) throw requestError('หมวดหลักที่เลือกไม่ได้อยู่ในวิชานี้');
-  return data;
+  return depth;
 }
 
 async function createTopic(supabase, adminId, body) {
   const values = parseTopicInput(body);
-  await validateTopicGroup(supabase, values.group_id, values.subject_id);
+  await validateTopicParent(supabase, values.parent_id, values.subject_id);
 
   const { data, error } = await supabase
     .from('content_topics')
     .insert({ ...values, created_at: new Date().toISOString() })
-    .select('id, subject_id, group_id, name, description, sort_order, is_active')
+    .select(TOPIC_COLUMNS)
     .single();
-  if (error) throw error;
-  await writeAudit(supabase, adminId, 'create', 'topic', data.id, { subjectId: values.subject_id, name: values.name });
+  if (error) {
+    if (isOptionalHierarchySchemaError(error)) throw hierarchySchemaError();
+    throw error;
+  }
+  await writeAudit(supabase, adminId, 'create', 'topic', data.id, { subjectId: values.subject_id, name: values.name, parentId: values.parent_id });
   return NextResponse.json({ topic: data }, { status: 201 });
 }
 
 async function updateTopic(supabase, adminId, body) {
   const values = parseTopicInput(body);
   const isActive = body.isActive !== false;
-  await validateTopicGroup(supabase, values.group_id, values.subject_id);
+  await validateTopicParent(supabase, values.parent_id, values.subject_id, body.id);
 
   const { data, error } = await supabase
     .from('content_topics')
     .update({ ...values, is_active: isActive })
     .eq('id', body.id)
-    .select('id, subject_id, group_id, name, description, sort_order, is_active')
+    .select(TOPIC_COLUMNS)
     .maybeSingle();
-  if (error) throw error;
-  if (!data) throw requestError('ไม่พบหมวดย่อยที่ต้องการแก้ไข', 404);
+  if (error) {
+    if (isOptionalHierarchySchemaError(error)) throw hierarchySchemaError();
+    throw error;
+  }
+  if (!data) throw requestError('ไม่พบหัวข้อที่ต้องการแก้ไข', 404);
   await writeAudit(supabase, adminId, 'update', 'topic', data.id, { name: data.name, isActive });
   return NextResponse.json({ topic: data });
+}
+
+// นับหัวข้อย่อยและข้อสอบที่ผูกอยู่ เพื่อเตือนก่อนลบจริง
+async function describeTopicUsage(supabase, id) {
+  const [children, questions] = await Promise.all([
+    supabase.from('content_topics').select('id', { count: 'exact', head: true }).eq('parent_id', id),
+    supabase.from('question_bank_questions').select('id', { count: 'exact', head: true }).eq('topic_id', id),
+  ]);
+  if (children.error && !isOptionalHierarchySchemaError(children.error)) throw children.error;
+  if (questions.error) throw questions.error;
+  return { childCount: children.count || 0, questionCount: questions.count || 0 };
 }
 
 async function archiveTopic(supabase, adminId, id) {
@@ -241,57 +289,137 @@ async function archiveTopic(supabase, adminId, id) {
     .select('id')
     .maybeSingle();
   if (error) throw error;
-  if (!data) throw requestError('ไม่พบหมวดย่อยที่ต้องการปิดใช้งาน', 404);
+  if (!data) throw requestError('ไม่พบหัวข้อที่ต้องการปิดใช้งาน', 404);
   await writeAudit(supabase, adminId, 'archive', 'topic', data.id);
   return NextResponse.json({ success: true });
 }
 
-function parseTopicGroupInput(body) {
-  const subjectId = normalizeText(body.subjectId, 80);
-  const name = normalizeText(body.name, 120);
-  const description = normalizeText(body.description, 800) || null;
-  if (!subjectId || !name) throw requestError('กรุณาเลือกวิชาและระบุชื่อหมวดหลัก');
-  return { subject_id: subjectId, name, description };
-}
-
-async function createTopicGroup(supabase, adminId, body) {
-  const values = parseTopicGroupInput(body);
+// ลบถาวร: ใช้เมื่อสร้างผิดและต้องการเอาออกจริง ไม่ใช่แค่ปิดใช้งาน
+// หัวข้อย่อยจะถูกลบตามด้วย (on delete cascade) ส่วนข้อสอบจะแค่หลุดหมวด (on delete set null)
+async function deleteTopic(supabase, adminId, id) {
+  const usage = await describeTopicUsage(supabase, id);
   const { data, error } = await supabase
-    .from('content_topic_groups')
-    .insert({ ...values, created_at: new Date().toISOString() })
-    .select('id, subject_id, name, description, sort_order, is_active')
-    .single();
-  if (error) throw error;
-  await writeAudit(supabase, adminId, 'create', 'topic_group', data.id, { subjectId: values.subject_id, name: values.name });
-  return NextResponse.json({ topicGroup: data }, { status: 201 });
-}
-
-async function updateTopicGroup(supabase, adminId, body) {
-  const values = parseTopicGroupInput(body);
-  const isActive = body.isActive !== false;
-  const { data, error } = await supabase
-    .from('content_topic_groups')
-    .update({ ...values, is_active: isActive })
-    .eq('id', body.id)
-    .select('id, subject_id, name, description, sort_order, is_active')
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) throw requestError('ไม่พบหมวดหลักที่ต้องการแก้ไข', 404);
-  await writeAudit(supabase, adminId, 'update', 'topic_group', data.id, { name: data.name, isActive });
-  return NextResponse.json({ topicGroup: data });
-}
-
-async function archiveTopicGroup(supabase, adminId, id) {
-  const { data, error } = await supabase
-    .from('content_topic_groups')
-    .update({ is_active: false })
+    .from('content_topics')
+    .delete()
     .eq('id', id)
     .select('id, name')
     .maybeSingle();
   if (error) throw error;
-  if (!data) throw requestError('ไม่พบหมวดหลักที่ต้องการปิดใช้งาน', 404);
-  await writeAudit(supabase, adminId, 'archive', 'topic_group', data.id, { name: data.name });
-  return NextResponse.json({ success: true });
+  if (!data) throw requestError('ไม่พบหัวข้อที่ต้องการลบ', 404);
+  await writeAudit(supabase, adminId, 'delete', 'topic', data.id, { name: data.name, ...usage });
+  return NextResponse.json({ success: true, ...usage });
+}
+
+function parseSubjectInput(body) {
+  const name = normalizeText(body.name, 160);
+  const shortName = normalizeText(body.shortName, 60) || name;
+  const description = normalizeText(body.description, 800) || null;
+  const sortOrder = Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0;
+  if (!name) throw requestError('กรุณาระบุชื่อหมวดวิชา');
+  return { name, short_name: shortName, description, sort_order: sortOrder };
+}
+
+async function createSubject(supabase, adminId, body) {
+  // id ของวิชาเป็น text ที่ใช้อ้างอิงทั้งระบบ (เช่น law, thai) จึงให้แอดมินกำหนดเองเป็น slug
+  const id = normalizeText(body.subjectId, 80).toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  if (!id) throw requestError('กรุณาระบุรหัสวิชาเป็นภาษาอังกฤษ เช่น traffic-law');
+  const values = parseSubjectInput(body);
+
+  const { data, error } = await supabase
+    .from('content_subjects')
+    .insert({ id, ...values, is_active: true })
+    .select('id, name, short_name, description, accent, sort_order, is_active')
+    .single();
+  if (error?.code === '23505') throw requestError('รหัสวิชานี้ถูกใช้แล้ว กรุณาใช้รหัสอื่น');
+  if (error) throw error;
+  await writeAudit(supabase, adminId, 'create', 'subject', data.id, { name: data.name });
+  return NextResponse.json({ subject: data }, { status: 201 });
+}
+
+async function updateSubject(supabase, adminId, body) {
+  const values = parseSubjectInput(body);
+  const isActive = body.isActive !== false;
+  const { data, error } = await supabase
+    .from('content_subjects')
+    .update({ ...values, is_active: isActive })
+    .eq('id', body.id)
+    .select('id, name, short_name, description, accent, sort_order, is_active')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw requestError('ไม่พบหมวดวิชาที่ต้องการแก้ไข', 404);
+  await writeAudit(supabase, adminId, 'update', 'subject', data.id, { name: data.name, isActive });
+  return NextResponse.json({ subject: data });
+}
+
+// รับลำดับใหม่ทั้งชุดจากการลากการ์ด แล้วเขียน sort_order ตามตำแหน่งในอาร์เรย์
+async function reorderSubjects(supabase, adminId, body) {
+  const ids = Array.isArray(body.ids)
+    ? body.ids.map((value) => normalizeText(value, 80)).filter(Boolean)
+    : [];
+  if (!ids.length) throw requestError('ไม่พบลำดับหมวดวิชาที่ต้องการบันทึก');
+
+  const results = await Promise.all(ids.map((id, index) => supabase
+    .from('content_subjects')
+    .update({ sort_order: index + 1 })
+    .eq('id', id)));
+  const failed = results.find((result) => result.error);
+  if (failed) throw failed.error;
+
+  await writeAudit(supabase, adminId, 'update', 'subject', ids[0], { reorder: ids });
+  return NextResponse.json({ success: true, ids });
+}
+
+async function deleteSubject(supabase, adminId, id, cascade = false) {
+  const [topics, questions] = await Promise.all([
+    supabase.from('content_topics').select('id', { count: 'exact', head: true }).eq('subject_id', id),
+    supabase.from('question_bank_questions').select('id', { count: 'exact', head: true }).eq('subject_id', id),
+  ]);
+  if (topics.error) throw topics.error;
+  if (questions.error) throw questions.error;
+
+  const topicCount = topics.count || 0;
+  const questionCount = questions.count || 0;
+
+  // ข้อสอบเป็นเนื้อหาจริงที่แอดมินอัปโหลดมา ห้ามลบตามวิชาไปเงียบ ๆ ไม่ว่ากรณีใด
+  // ต้องให้ย้ายไปวิชาอื่นหรือลบเองก่อน จะได้ไม่เสียคลังข้อสอบโดยไม่ตั้งใจ
+  if (questionCount > 0) {
+    throw requestError(
+      `ลบไม่ได้ เพราะยังมีข้อสอบ ${questionCount} ข้ออยู่ในวิชานี้ กรุณาย้ายไปวิชาอื่นหรือลบข้อสอบออกก่อน`,
+      409,
+      { code: 'HAS_QUESTIONS', topicCount, questionCount },
+    );
+  }
+
+  // หัวข้อเป็นแค่โครงสร้าง ลบพร้อมวิชาได้ แต่ต้องให้แอดมินยืนยันรอบสองก่อน
+  if (topicCount > 0 && !cascade) {
+    throw requestError(
+      `วิชานี้ยังมีหัวข้อย่อย ${topicCount} รายการ`,
+      409,
+      { code: 'HAS_TOPICS', topicCount, questionCount },
+    );
+  }
+
+  if (topicCount > 0) {
+    const { error: topicDeleteError } = await supabase.from('content_topics').delete().eq('subject_id', id);
+    if (topicDeleteError) {
+      console.error('[deleteSubject] ลบหัวข้อในวิชาไม่สำเร็จ', { subjectId: id, adminId, error: topicDeleteError });
+      throw topicDeleteError;
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('content_subjects')
+    .delete()
+    .eq('id', id)
+    .select('id, name')
+    .maybeSingle();
+  if (error) {
+    console.error('[deleteSubject] ลบวิชาไม่สำเร็จ', { subjectId: id, adminId, error });
+    throw error;
+  }
+  if (!data) throw requestError('ไม่พบหมวดวิชาที่ต้องการลบ', 404);
+  await writeAudit(supabase, adminId, 'delete', 'subject', data.id, { name: data.name, deletedTopics: topicCount });
+  return NextResponse.json({ success: true, deletedTopics: topicCount });
 }
 
 async function importLegacyTopics(supabase, adminId) {
@@ -689,31 +817,33 @@ export async function GET(request) {
     else questionsQuery = questionsQuery.limit(80);
 
     const results = await Promise.all([
-      supabase.from('content_subjects').select('id, name, short_name, accent, sort_order').eq('is_active', true).order('sort_order'),
+      supabase.from('content_subjects').select('id, name, short_name, description, accent, sort_order, is_active').order('sort_order'),
       supabase.from('content_topics').select('id, legacy_id, subject_id, name, description, sort_order, is_active').order('sort_order').order('name'),
       questionsQuery,
       supabase.from('exam_sets').select('id, slug, bank, title, description, subject_id, topic_id, track_id, duration_minutes, difficulty, is_free, status, created_at, content_subjects(name), content_topics(name), exam_set_questions(count)').order('created_at', { ascending: false }).limit(80),
       supabase.from('announcements').select('id, title, summary, body, tone, audience, show_on_login, is_published, starts_at, ends_at, created_at').order('created_at', { ascending: false }).limit(80),
       // สถิติ (จำนวนข้อสอบที่เปิดใช้ / ความพร้อมของสายงาน) ต้องนับจากทั้งหมดจริง ไม่ใช่แค่
       // หน้าต่าง 80 ข้อล่าสุดด้านบน — คอลัมน์ที่ดึงจึงเล็กมาก ทำให้ดึงแบบไม่จำกัดได้อย่างประหยัด
-      supabase.from('question_bank_questions').select('id, bank, subject_id, track_id, is_active').limit(5000),
+      fetchAllRows(() => supabase.from('question_bank_questions').select('id, bank, subject_id, track_id, is_active')),
     ]);
-    const [subjectsResult, topicsResult, questionsResult, setsResult, announcementsResult, questionCountsResult] = results;
-    for (const result of results) if (result.error) throwSchemaHint(result.error);
+    const [subjectsResult, topicsResult, questionsResult, setsResult, announcementsResult, questionCountRows] = results;
+    for (const result of results) if (result?.error) throwSchemaHint(result.error);
 
-    // Topic groups were introduced after the initial content migration. Keep the
-    // administration page usable until the new migration is run, but enrich the
-    // topic list as soon as the hierarchy is available.
-    let topicGroups = [];
-    let topics = (topicsResult.data || []).map((item) => ({ ...item, group_id: null }));
-    const [topicGroupsResult, groupedTopicsResult] = await Promise.all([
-      supabase.from('content_topic_groups').select('id, subject_id, name, description, sort_order, is_active').order('sort_order').order('name'),
-      supabase.from('content_topics').select('id, legacy_id, subject_id, group_id, name, description, sort_order, is_active').order('sort_order').order('name'),
-    ]);
-    if (topicGroupsResult.error && !isOptionalHierarchySchemaError(topicGroupsResult.error)) throw topicGroupsResult.error;
-    if (groupedTopicsResult.error && !isOptionalHierarchySchemaError(groupedTopicsResult.error)) throw groupedTopicsResult.error;
-    if (!topicGroupsResult.error) topicGroups = topicGroupsResult.data || [];
-    if (!groupedTopicsResult.error) topics = groupedTopicsResult.data || [];
+    // โครงสร้างลำดับชั้น (parent_id / is_free_practice) เพิ่มเข้ามาทีหลัง — ถ้ายังไม่ได้รัน
+    // migration ให้หน้าแอดมินยังใช้งานได้ โดยถือว่าทุกหัวข้อเป็นหัวข้อหลักไปก่อน
+    let hierarchyReady = true;
+    let topics = (topicsResult.data || []).map((item) => ({ ...item, parent_id: null, is_free_practice: false }));
+    const nestedTopicsResult = await supabase
+      .from('content_topics')
+      .select('id, legacy_id, subject_id, parent_id, name, description, sort_order, is_active, is_free_practice')
+      .order('sort_order')
+      .order('name');
+    if (nestedTopicsResult.error) {
+      if (!isOptionalHierarchySchemaError(nestedTopicsResult.error)) throw nestedTopicsResult.error;
+      hierarchyReady = false;
+    } else {
+      topics = nestedTopicsResult.data || [];
+    }
 
     // สายงาน (exam_tracks) เป็นตารางที่เพิ่มเข้ามาทีหลัง — ถ้ายังไม่ได้รัน migration
     // ให้คืนค่าว่างแทนการทำให้ทั้งหน้าแอดมินใช้งานไม่ได้
@@ -727,13 +857,13 @@ export async function GET(request) {
     return NextResponse.json({
       subjects: subjectsResult.data || [],
       topics,
-      topicGroups,
+      hierarchyReady,
       questions: questionsResult.data || [],
       sets: setsResult.data || [],
       announcements: announcementsResult.data || [],
       tracks: tracksResult.data || [],
       trackBlueprints: blueprintsResult.data || [],
-      questionCounts: questionCountsResult.data || [],
+      questionCounts: questionCountRows,
     });
   } catch (error) {
     return apiErrorResponse(error);
@@ -747,7 +877,7 @@ export async function POST(request) {
     const supabase = getSupabaseAdmin();
 
     if (body?.type === 'topic') return await createTopic(supabase, admin.id, body);
-    if (body?.type === 'topic-group') return await createTopicGroup(supabase, admin.id, body);
+    if (body?.type === 'subject') return await createSubject(supabase, admin.id, body);
     if (body?.type === 'import-topics') return await importLegacyTopics(supabase, admin.id);
     if (body?.type === 'set') return await createSet(supabase, admin.id, body);
     if (body?.type === 'question') return await createQuestion(supabase, admin.id, body);
@@ -763,6 +893,8 @@ export async function PATCH(request) {
   try {
     const admin = await requireAdmin();
     const body = await request.json();
+    // จัดลำดับใหม่ส่งมาเป็นรายการ id ไม่ใช่ระเบียนเดียว จึงต้องแยกก่อนด่านตรวจ id ด้านล่าง
+    if (body?.type === 'subject-reorder') return await reorderSubjects(getSupabaseAdmin(), admin.id, body);
     if (!normalizeOptionalId(body?.id)) throw requestError('ข้อมูลที่ต้องการแก้ไขไม่ถูกต้อง');
     const supabase = getSupabaseAdmin();
 
@@ -782,7 +914,7 @@ export async function PATCH(request) {
 
     if (body?.type === 'set') return await updateSet(supabase, admin.id, body);
     if (body?.type === 'topic') return await updateTopic(supabase, admin.id, body);
-    if (body?.type === 'topic-group') return await updateTopicGroup(supabase, admin.id, body);
+    if (body?.type === 'subject') return await updateSubject(supabase, admin.id, body);
 
     if (body?.type !== 'question') throw requestError('ข้อมูลข้อสอบไม่ถูกต้อง');
 
@@ -838,8 +970,13 @@ export async function DELETE(request) {
     const supabase = getSupabaseAdmin();
 
     if (body?.type === 'set') return await deleteSet(supabase, admin.id, id);
-    if (body?.type === 'topic') return await archiveTopic(supabase, admin.id, id);
-    if (body?.type === 'topic-group') return await archiveTopicGroup(supabase, admin.id, id);
+    // ปิดใช้งาน (archive) เป็นค่าเริ่มต้น ส่วน mode:'purge' คือลบถาวรจริง
+    if (body?.type === 'topic') {
+      return body?.mode === 'purge'
+        ? await deleteTopic(supabase, admin.id, id)
+        : await archiveTopic(supabase, admin.id, id);
+    }
+    if (body?.type === 'subject') return await deleteSubject(supabase, admin.id, id, body?.cascade === true);
     if (body?.type === 'announcement') return await deleteAnnouncement(supabase, admin.id, id);
     if (body?.type !== 'question') throw requestError('ข้อมูลข้อสอบไม่ถูกต้อง');
 

@@ -6,9 +6,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { subjects } from '@/lib/subjects';
+import { useCatalog } from '@/lib/subjectCatalog';
 import { questions as fallbackQuestions } from '@/lib/questions';
-import { topics } from '@/lib/topics';
 import { recordTopicAttempt } from '@/lib/progress';
 import { confirmIncompleteAnswers } from '@/lib/sweetAlert';
 import { useAttemptHistory } from '@/lib/useAttemptHistory';
@@ -59,7 +58,8 @@ function ProgressRing({ pct }) {
 }
 
 function PracticeResult({ setName, subjectId, topicId, questionSetId, subjectQuestions, answers, score, elapsedSeconds, standardSeconds, onRestart }) {
-  const subject = subjects.find((item) => item.id === subjectId);
+  const { findSubject, findTopic } = useCatalog();
+  const subject = findSubject(subjectId);
   const history = useAttemptHistory({ bank: 'practice', subjectId, topicId: topicId || null });
 
   const items = subjectQuestions.map((item) => ({
@@ -70,11 +70,11 @@ function PracticeResult({ setName, subjectId, topicId, questionSetId, subjectQue
     selectedIndex: answers[item.id],
     explanation: item.explanation,
     categoryId: item.topicId || subjectId,
-    categoryName: (item.topicId && topics.find((topicItem) => topicItem.id === item.topicId)?.name) || subject?.name || null,
+    categoryName: (item.topicId && findTopic(item.topicId)?.name) || subject?.name || null,
   }));
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-app">
       <ExamResultSummary
         title={setName}
         subtitle={subject?.name}
@@ -100,9 +100,10 @@ export default function ExamPage() {
   const searchParams = useSearchParams();
   const topicId = searchParams.get('topic');
   const setSlug = searchParams.get('set');
-  const topic = topicId ? topics.find((t) => t.id === topicId) : null;
-
-  const subject = subjects.find((s) => s.id === subjectId);
+  const { findSubject, findTopic } = useCatalog();
+  const subject = findSubject(subjectId);
+  // หัวข้อมาจากฐานข้อมูล จึงเป็น null ในเฟรมแรกระหว่างที่ catalog ยังโหลด
+  const topic = findTopic(topicId);
   const fallbackSubjectQuestions = useMemo(
     () =>
       setSlug ? [] : fallbackQuestions.filter(
@@ -294,7 +295,8 @@ export default function ExamPage() {
   const total = subjectQuestions.length;
   const answeredCount = subjectQuestions.filter((item) => answers[item.id] !== undefined).length;
   const progressPct = Math.round((answeredCount / total) * 100);
-  const setName = questionState.set?.title || (topic ? topic.name : subject.name);
+  // subject มาจาก catalog ที่โหลดแบบ async จึงอาจยังเป็น null ในเฟรมแรก
+  const setName = questionState.set?.title || (topic ? topic.name : subject?.name) || 'แบบฝึกหัดรายวิชา';
 
   const selectAnswer = (qId, choiceIndex) => {
     if (phase !== 'taking') return;
@@ -433,7 +435,7 @@ export default function ExamPage() {
     <div className="min-h-screen bg-graylight/5">
       {/* แถบข้อมูลด้านบน */}
       <header className="bg-white border-b border-graylight/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="max-w-app mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-4 sm:gap-6 min-w-0 flex-wrap">
             <div className="flex items-center gap-2 min-w-0">
               <FileText size={16} className="text-accent-cyan shrink-0" />
@@ -490,7 +492,7 @@ export default function ExamPage() {
         />
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 grid gap-5 lg:grid-cols-[210px_1fr] xl:grid-cols-[210px_1fr_240px]">
+      <div className="max-w-app mx-auto px-4 sm:px-6 py-5 grid gap-5 lg:grid-cols-[210px_1fr] xl:grid-cols-[210px_1fr_240px]">
         {/* ซ้าย: รายการข้อสอบ (จอใหญ่) */}
         <aside className="hidden lg:block">{navigator}</aside>
 

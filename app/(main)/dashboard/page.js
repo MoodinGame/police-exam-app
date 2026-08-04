@@ -22,13 +22,13 @@ import {
   RotateCcw,
   TrendingUp,
 } from 'lucide-react';
-import { subjects, totalQuestions } from '@/lib/subjects';
+import { totalQuestions } from '@/lib/subjects';
+import { useCatalog } from '@/lib/subjectCatalog';
 import { getDailyQuestions, todayIsoDate } from '@/lib/dailyChallenge';
 import { getAttempts, getOverview, getStreaks, getSubjectAccuracy, getWrongBySubject } from '@/lib/progress';
 import { getMockAttempts } from '@/lib/mockExamProgress';
 import { loadMockExamSets, getCachedMockExamSet } from '@/lib/mockExamClient';
 import { getSession } from '@/lib/examSession';
-import { topics } from '@/lib/topics';
 import ResumeBanner from '@/components/ResumeBanner';
 
 const EXAM_DATE = new Date('2026-11-29T00:00:00+07:00');
@@ -70,7 +70,7 @@ function CountdownBox({ days, hours, minutes, seconds, reached, loading }) {
     { v: seconds, l: 'วิ' },
   ];
   return (
-    <div className="app-card px-4 py-3 text-right shadow-[0_12px_26px_rgba(43,45,66,0.08)]">
+    <div className="app-card px-4 py-3 text-right shadow-[0_12px_26px_rgba(30,64,100,0.08)]">
       <p className="text-xs text-graydark/50">สอบข้อเขียน 29 พ.ย. 2569</p>
       {reached ? (
         <p className="text-2xl font-bold text-accent-cyan">ถึงวันสอบแล้ว</p>
@@ -93,7 +93,7 @@ function CountdownBox({ days, hours, minutes, seconds, reached, loading }) {
 function MobileExamBanner({ days, hours, reached, loading }) {
   const remaining = reached ? 'ถึงวันสอบแล้ว' : loading ? 'กำลังคำนวณเวลา' : `เหลืออีก ${days} วัน ${hours} ชม.`;
   return (
-    <section className="relative overflow-hidden rounded-[1.75rem] bg-[radial-gradient(circle_at_88%_10%,rgba(216,176,107,0.22),transparent_30%),linear-gradient(135deg,#172856,#263b71)] p-5 text-white shadow-[0_16px_32px_rgba(23,40,86,0.2)] sm:hidden">
+    <section className="relative overflow-hidden rounded-[1.75rem] bg-[radial-gradient(circle_at_88%_10%,rgba(216,176,107,0.22),transparent_30%),linear-gradient(135deg,#172856,#263b71)] p-5 text-white shadow-[0_16px_32px_rgba(30,64,100,0.2)] sm:hidden">
       <div className="pointer-events-none absolute -bottom-10 -right-5 h-28 w-28 rounded-full border border-white/10" />
       <div className="relative flex items-center gap-4">
         <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-accent-gold ring-1 ring-white/10"><CalendarClock size={27} /></span>
@@ -104,6 +104,7 @@ function MobileExamBanner({ days, hours, reached, loading }) {
 }
 
 function DailyChallenge() {
+  const { findSubject } = useCatalog();
   const [shuffleKey, setShuffleKey] = useState(0);
   const dailyQuestions = useMemo(
     () => getDailyQuestions(shuffleKey === 0 ? todayIsoDate() : `${todayIsoDate()}-${shuffleKey}`, 5),
@@ -119,7 +120,7 @@ function DailyChallenge() {
     0
   );
   const answered = question ? answers[question.id] !== undefined : false;
-  const subjectName = question ? subjects.find((s) => s.id === question.subjectId)?.name : '';
+  const subjectName = question ? findSubject(question.subjectId)?.name || '' : '';
 
   function selectAnswer(choiceIndex) {
     if (answered) return;
@@ -223,10 +224,10 @@ function resultStyle(percent) {
   return 'bg-rose-50 text-rose-600';
 }
 
-function getDashboardData() {
+function getDashboardData(findSubject, findTopic) {
   const practice = getAttempts().map((attempt, index) => {
-    const topic = topics.find((item) => item.id === attempt.topicId);
-    const subject = subjects.find((item) => item.id === attempt.subjectId);
+    const topic = findTopic(attempt.topicId);
+    const subject = findSubject(attempt.subjectId);
     const percent = attempt.total ? Math.round((attempt.score / attempt.total) * 100) : 0;
     return {
       id: `practice-${attempt.at || index}`,
@@ -260,10 +261,10 @@ function getDashboardData() {
   const subjectAccuracy = getSubjectAccuracy();
   const wrongBySubject = getWrongBySubject().map((item) => ({
     ...item,
-    subject: subjects.find((subject) => subject.id === item.subjectId),
+    subject: findSubject(item.subjectId),
   })).filter((item) => item.subject);
   const weakSubjects = Object.entries(subjectAccuracy)
-    .map(([subjectId, value]) => ({ subject: subjects.find((item) => item.id === subjectId), ...value }))
+    .map(([subjectId, value]) => ({ subject: findSubject(subjectId), ...value }))
     .filter((item) => item.subject && item.pct !== null)
     .sort((a, b) => a.pct - b.pct)
     .slice(0, 3);
@@ -283,7 +284,7 @@ function getDashboardData() {
   };
 }
 
-function buildDashboardDataFromStats(stats) {
+function buildDashboardDataFromStats(stats, findSubject) {
   const subjectStats = stats.subjectStats || [];
   const subjectAccuracy = Object.fromEntries(subjectStats.map((item) => [item.id, {
     answered: item.answered,
@@ -292,7 +293,7 @@ function buildDashboardDataFromStats(stats) {
     sessions: item.sessions,
   }]));
   const weakSubjects = (stats.weakSubjects || [])
-    .map((item) => ({ ...item, subject: subjects.find((subject) => subject.id === item.id) }))
+    .map((item) => ({ ...item, subject: findSubject(item.id) }))
     .filter((item) => item.subject);
   const results = (stats.recentAttempts || []).map((attempt) => ({
     id: `database-${attempt.id}`,
@@ -318,7 +319,7 @@ function buildDashboardDataFromStats(stats) {
   };
 }
 
-function TodayStudyPlan({ data }) {
+function TodayStudyPlan({ data, findSubject }) {
   const plannedSubjects = new Set();
   const items = [];
   const colorStyles = [
@@ -349,10 +350,10 @@ function TodayStudyPlan({ data }) {
   data.weakSubjects.forEach((item, index) => addSubjectPlan(item.subject, items.length + index));
 
   [
-    subjects.find((subject) => subject.id === 'law'),
-    subjects.find((subject) => subject.id === 'english'),
-    subjects.find((subject) => subject.id === 'correspondence'),
-    subjects.find((subject) => subject.id === 'it'),
+    findSubject('law'),
+    findSubject('english'),
+    findSubject('correspondence'),
+    findSubject('it'),
   ].forEach((subject) => addSubjectPlan(subject, items.length));
 
   return (
@@ -378,10 +379,10 @@ function TodayStudyPlan({ data }) {
   );
 }
 
-function getReadiness(data) {
+function getReadiness(data, subjectCount) {
   const accuracy = data.overview.accuracyPct;
   const trainedSubjects = Object.keys(data.subjectAccuracy || getSubjectAccuracy()).length;
-  const coverage = Math.round((trainedSubjects / subjects.length) * 100);
+  const coverage = subjectCount ? Math.round((trainedSubjects / subjectCount) * 100) : 0;
 
   if (!data.results.length || accuracy === null) {
     return {
@@ -423,8 +424,8 @@ function ReadinessRing({ value }) {
   );
 }
 
-function ExamReadiness({ data }) {
-  const readiness = getReadiness(data);
+function ExamReadiness({ data, subjectCount }) {
+  const readiness = getReadiness(data, subjectCount);
 
   return (
     <section className="app-card relative overflow-hidden p-5 sm:p-6">
@@ -592,6 +593,7 @@ function QuickActions() {
 
 
 export default function DashboardPage() {
+  const { subjects, findSubject, findTopic } = useCatalog();
   const countdown = useCountdown(EXAM_DATE);
   const [data, setData] = useState(null);
 
@@ -603,10 +605,10 @@ export default function DashboardPage() {
         const response = await fetch('/api/stats', { cache: 'no-store' });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Unable to load dashboard');
-        if (active) setData(buildDashboardDataFromStats(payload));
+        if (active) setData(buildDashboardDataFromStats(payload, findSubject));
       } catch {
         loadMockExamSets().finally(() => {
-          if (active) setData(getDashboardData());
+          if (active) setData(getDashboardData(findSubject, findTopic));
         });
       }
     }
@@ -614,7 +616,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [findSubject, findTopic]);
 
   const dashboard = data || {
     results: [],
@@ -650,8 +652,8 @@ export default function DashboardPage() {
       <ResumeBanner />
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <ExamReadiness data={dashboard} />
-        <TodayStudyPlan data={dashboard} />
+        <ExamReadiness data={dashboard} subjectCount={subjects.length} />
+        <TodayStudyPlan data={dashboard} findSubject={findSubject} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">

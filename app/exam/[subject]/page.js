@@ -1,32 +1,29 @@
 import Link from 'next/link';
 import { LogIn, LockKeyhole } from 'lucide-react';
-import { topics } from '@/lib/topics';
-import { isFreePracticeTopic } from '@/lib/entitlements';
-import { canUseArea, getUserAccess } from '@/lib/serverAccess';
+import { canUseArea, getUserAccess, isFreePracticeTopicId } from '@/lib/serverAccess';
 import { requireCurrentUser } from '@/lib/serverUser';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import ExamClient from './ExamClient';
 
 export const dynamic = 'force-dynamic';
 
-async function getAccessForCurrentUser() {
-  const user = await requireCurrentUser();
-  return getUserAccess(getSupabaseAdmin(), user.id);
-}
-
-export default async function ExamPage({ params, searchParams }) {
-  const topic = searchParams?.topic
-    ? topics.find((item) => item.id === searchParams.topic && item.subjectId === params.subject)
-    : null;
+export default async function ExamPage({ searchParams }) {
+  const topicKey = searchParams?.topic || null;
+  const hasDirectSet = Boolean(searchParams?.set);
 
   try {
-    const access = await getAccessForCurrentUser();
-    const isMember = canUseArea(access, 'practice');
-    const isFreeTrial = Boolean(topic && isFreePracticeTopic(topic.id));
-    const hasDirectSet = Boolean(searchParams?.set);
+    const user = await requireCurrentUser();
+    const supabase = getSupabaseAdmin();
 
-    // Opening a whole subject can expose several sets at once, so it is a
-    // member-only route. A trial user must start from one of the six topics.
+    // เช็คสถานะสมาชิกและ flag ชุดฟรีพร้อมกัน — flag อ่านจาก DB ที่แอดมินตั้งไว้
+    // ไม่ใช่รายการที่ hardcode ไว้ ไม่งั้นหัวข้อที่แอดมินเพิ่งติ๊กว่าฟรีจะยังโดนบล็อก
+    const [access, isFreeTrial] = await Promise.all([
+      getUserAccess(supabase, user.id),
+      topicKey ? isFreePracticeTopicId(supabase, topicKey) : Promise.resolve(false),
+    ]);
+    const isMember = canUseArea(access, 'practice');
+
+    // เปิดทั้งวิชาโดยไม่ระบุหัวข้อ/ชุด จะเห็นข้อสอบหลายชุดพร้อมกัน จึงยังจำกัดเฉพาะสมาชิก
     if (!isMember && !isFreeTrial && !hasDirectSet) return <MembershipRequired />;
     return <ExamClient />;
   } catch (error) {

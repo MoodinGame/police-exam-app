@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   BookOpenCheck,
+  ChevronDown,
   CircleAlert,
   ClipboardList,
   Database,
@@ -12,6 +13,7 @@ import {
   EyeOff,
   FileJson,
   FilePlus2,
+  GripVertical,
   Layers3,
   LayoutDashboard,
   LoaderCircle,
@@ -26,12 +28,13 @@ import {
   Trash2,
   UploadCloud,
 } from 'lucide-react';
-import { confirmArchiveQuestion, confirmArchiveTopic, confirmDeleteAnnouncement, confirmDeleteSet } from '@/lib/sweetAlert';
+import { confirmArchiveQuestion, confirmArchiveTopic, confirmCascadeDeleteSubject, confirmDeleteAnnouncement, confirmDeleteSet, confirmDeleteSubject, confirmDeleteTopic, confirmResetProgress } from '@/lib/sweetAlert';
 import { getMockExamTrack } from '@/lib/mockExamTracks';
 import { parseQuestionsText } from '@/lib/parseQuestionText';
+import QuestionFileImport from '@/components/QuestionFileImport';
 
-const EMPTY_TOPIC = { id: '', subjectId: '', groupId: '', name: '', description: '', isActive: true };
-const EMPTY_TOPIC_GROUP = { id: '', subjectId: '', name: '', description: '', isActive: true };
+const EMPTY_TOPIC = { id: '', subjectId: '', parentId: '', name: '', description: '', sortOrder: 0, isActive: true, isFreePractice: false };
+const EMPTY_SUBJECT = { id: '', subjectId: '', name: '', shortName: '', description: '', sortOrder: 0, isActive: true };
 const EMPTY_SET = {
   id: '',
   bank: 'practice',
@@ -75,13 +78,13 @@ const EMPTY_ANNOUNCEMENT = {
   endsAt: '',
 };
 
-const fieldClass = 'mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10';
+const fieldClass = 'mt-1.5 field';
 
 export default function AdminContentManager({ bank, showSharedTabs = true, mockPoolOnly = false }) {
   const [trackId, setTrackId] = useState('');
   const trackAutoSelected = useRef(false);
 
-  const [content, setContent] = useState({ subjects: [], topics: [], topicGroups: [], questions: [], sets: [], announcements: [], tracks: [], trackBlueprints: [], questionCounts: [] });
+  const [content, setContent] = useState({ subjects: [], topics: [], hierarchyReady: true, questions: [], sets: [], announcements: [], tracks: [], trackBlueprints: [], questionCounts: [] });
   const selectedTrack = (content.tracks || []).find((item) => item.id === trackId) || null;
 
   const emptyQuestion = () => ({ ...EMPTY_QUESTION, bank, trackId: bank === 'mock' ? trackId : '' });
@@ -95,12 +98,15 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
   const [tab, setTab] = useState(mockPoolOnly ? 'sets' : showSharedTabs ? 'overview' : 'questions');
   const [question, setQuestion] = useState(emptyQuestion);
   const [topic, setTopic] = useState(EMPTY_TOPIC);
-  const [topicGroup, setTopicGroup] = useState(EMPTY_TOPIC_GROUP);
+  const [subjectForm, setSubjectForm] = useState(EMPTY_SUBJECT);
+  const [deletingSubjectId, setDeletingSubjectId] = useState('');
+  const alertRef = useRef(null);
   const [examSet, setExamSet] = useState(emptySet);
   const [announcement, setAnnouncement] = useState(EMPTY_ANNOUNCEMENT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [bulkJson, setBulkJson] = useState('');
   const [bulkImporting, setBulkImporting] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
@@ -157,7 +163,7 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
       setContent({
         subjects: result.subjects || [],
         topics: result.topics || [],
-        topicGroups: result.topicGroups || [],
+        hierarchyReady: result.hierarchyReady !== false,
         questions: result.questions || [],
         sets: result.sets || [],
         announcements: result.announcements || [],
@@ -262,6 +268,13 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
     });
   }, [questionListSource, questionSearch, questionSubjectFilter, questionTopicFilter, questionStatusFilter]);
 
+  // แถบแจ้งเตือนอยู่หัวหน้า แต่ปุ่มลบอยู่ท้ายหน้า ถ้าไม่เลื่อนไปให้เห็น
+  // แอดมินจะนึกว่ากดแล้วไม่มีอะไรเกิดขึ้น ทั้งที่ระบบตอบเหตุผลไว้แล้ว
+  useEffect(() => {
+    if (!error && !notice) return;
+    alertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [error, notice]);
+
   const request = async (method, body) => {
     const response = await fetch('/api/admin/content', {
       method,
@@ -269,7 +282,15 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
       body: JSON.stringify(body),
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'บันทึกข้อมูลไม่สำเร็จ');
+    if (!response.ok) {
+      // ต้องพก status/code มาด้วย ไม่งั้นหน้าบ้านแยกไม่ออกว่า 409 ที่กู้คืนได้ กับ 500 ที่ล้มจริง
+      const error = new Error(result.error || 'บันทึกข้อมูลไม่สำเร็จ');
+      error.status = response.status;
+      error.code = result.details?.code || null;
+      error.details = result.details || null;
+      console.error('[admin/content] request failed', { method, type: body?.type, status: response.status, result });
+      throw error;
+    }
     return result;
   };
 
@@ -280,19 +301,41 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
     try {
       const isEditing = Boolean(topic.id);
       await request(isEditing ? 'PATCH' : 'POST', { type: 'topic', ...topic });
-      setTopic(EMPTY_TOPIC);
-      setNotice(isEditing ? 'บันทึกการแก้ไขหมวดย่อยแล้ว' : 'เพิ่มหมวดย่อยเรียบร้อยแล้ว');
+      // เพิ่มหลายหัวข้อต่อเนื่อง: คงวิชาและหัวข้อแม่ไว้ ล้างเฉพาะชื่อกับคำอธิบาย
+      setTopic((current) => isEditing
+        ? EMPTY_TOPIC
+        : { ...EMPTY_TOPIC, subjectId: current.subjectId, parentId: current.parentId });
+      setNotice(isEditing ? 'บันทึกการแก้ไขหัวข้อแล้ว' : 'เพิ่มหัวข้อเรียบร้อยแล้ว');
       await refresh();
     } catch (saveError) {
-      setError(saveError.message || (topic.id ? 'แก้ไขหมวดย่อยไม่สำเร็จ' : 'เพิ่มหมวดย่อยไม่สำเร็จ'));
+      setError(saveError.message || (topic.id ? 'แก้ไขหัวข้อไม่สำเร็จ' : 'เพิ่มหัวข้อไม่สำเร็จ'));
     } finally {
       setSaving(false);
     }
   };
 
   const editTopic = (item) => {
-    setTopic({ id: item.id, subjectId: item.subject_id, groupId: item.group_id || '', name: item.name || '', description: item.description || '', isActive: item.is_active });
-    setTab('topics');
+    setTopic({
+      id: item.id,
+      subjectId: item.subject_id,
+      parentId: item.parent_id || '',
+      name: item.name || '',
+      description: item.description || '',
+      sortOrder: item.sort_order ?? 0,
+      isActive: item.is_active,
+      isFreePractice: Boolean(item.is_free_practice),
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // กดปุ่ม "เพิ่มหัวข้อย่อย" บนโหนดใดก็ได้ = เตรียมฟอร์มให้สร้างลูกของโหนดนั้น
+  const startChildTopic = (parentItem) => {
+    setTopic({ ...EMPTY_TOPIC, subjectId: parentItem.subject_id, parentId: parentItem.id });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const startRootTopic = (subjectId) => {
+    setTopic({ ...EMPTY_TOPIC, subjectId, parentId: '' });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -302,10 +345,10 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
     setError('');
     try {
       await request('DELETE', { type: 'topic', id: item.id });
-      setNotice('ปิดใช้งานหมวดย่อยแล้ว');
+      setNotice('ปิดใช้งานหัวข้อแล้ว');
       await refresh();
     } catch (archiveError) {
-      setError(archiveError.message || 'ปิดใช้งานหมวดย่อยไม่สำเร็จ');
+      setError(archiveError.message || 'ปิดใช้งานหัวข้อไม่สำเร็จ');
     } finally {
       setSaving(false);
     }
@@ -315,64 +358,119 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
     setSaving(true);
     setError('');
     try {
-      await request('PATCH', { type: 'topic', id: item.id, subjectId: item.subject_id, groupId: item.group_id || '', name: item.name, description: item.description || '', isActive: true });
-      setNotice('เปิดใช้งานหมวดย่อยแล้ว');
+      await request('PATCH', {
+        type: 'topic',
+        id: item.id,
+        subjectId: item.subject_id,
+        parentId: item.parent_id || '',
+        name: item.name,
+        description: item.description || '',
+        sortOrder: item.sort_order ?? 0,
+        isFreePractice: Boolean(item.is_free_practice),
+        isActive: true,
+      });
+      setNotice('เปิดใช้งานหัวข้อแล้ว');
       await refresh();
     } catch (reactivateError) {
-      setError(reactivateError.message || 'เปิดใช้งานหมวดย่อยไม่สำเร็จ');
+      setError(reactivateError.message || 'เปิดใช้งานหัวข้อไม่สำเร็จ');
     } finally {
       setSaving(false);
     }
   };
 
-  const saveTopicGroup = async (event) => {
+  const deleteTopicHandler = async (item) => {
+    if (!await confirmDeleteTopic(item.name)) return;
+    setSaving(true);
+    setError('');
+    try {
+      const result = await request('DELETE', { type: 'topic', id: item.id, mode: 'purge' });
+      const detail = result.questionCount ? ` ข้อสอบ ${result.questionCount} ข้อถูกปลดออกจากหัวข้อนี้แล้ว` : '';
+      setNotice(`ลบหัวข้อถาวรแล้ว${detail}`);
+      if (topic.id === item.id) setTopic(EMPTY_TOPIC);
+      await refresh();
+    } catch (deleteError) {
+      setError(deleteError.message || 'ลบหัวข้อไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveSubject = async (event) => {
     event.preventDefault();
     setSaving(true);
     setError('');
     try {
-      const isEditing = Boolean(topicGroup.id);
-      await request(isEditing ? 'PATCH' : 'POST', { type: 'topic-group', ...topicGroup });
-      setTopicGroup(EMPTY_TOPIC_GROUP);
-      setNotice(isEditing ? 'บันทึกการแก้ไขหมวดหลักแล้ว' : 'เพิ่มหมวดหลักเรียบร้อยแล้ว');
+      const isEditing = Boolean(subjectForm.id);
+      await request(isEditing ? 'PATCH' : 'POST', { type: 'subject', ...subjectForm });
+      setSubjectForm(EMPTY_SUBJECT);
+      setNotice(isEditing ? 'บันทึกการแก้ไขหมวดวิชาแล้ว' : 'เพิ่มหมวดวิชาเรียบร้อยแล้ว');
       await refresh();
     } catch (saveError) {
-      setError(saveError.message || 'บันทึกหมวดหลักไม่สำเร็จ');
+      setError(saveError.message || 'บันทึกหมวดวิชาไม่สำเร็จ');
     } finally {
       setSaving(false);
     }
   };
 
-  const editTopicGroup = (item) => {
-    setTopicGroup({ id: item.id, subjectId: item.subject_id, name: item.name || '', description: item.description || '', isActive: item.is_active });
-    setTab('topics');
+  const editSubject = (item) => {
+    setSubjectForm({
+      id: item.id,
+      subjectId: item.id,
+      name: item.name || '',
+      shortName: item.short_name || '',
+      description: item.description || '',
+      sortOrder: item.sort_order ?? 0,
+      isActive: item.is_active !== false,
+    });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const archiveTopicGroup = async (item) => {
+  // ลากการ์ดเสร็จแล้วเขียนลำดับใหม่ทั้งชุด แทนการให้แอดมินพิมพ์ตัวเลขเอง
+  const reorderSubjects = async (orderedIds) => {
     setSaving(true);
     setError('');
     try {
-      await request('DELETE', { type: 'topic-group', id: item.id });
-      setNotice('ปิดใช้งานหมวดหลักแล้ว หัวข้อเดิมยังอยู่และย้ายไปหมวดอื่นได้');
+      await request('PATCH', { type: 'subject-reorder', ids: orderedIds });
+      setNotice('จัดลำดับหมวดวิชาใหม่แล้ว');
       await refresh();
-    } catch (archiveError) {
-      setError(archiveError.message || 'ปิดใช้งานหมวดหลักไม่สำเร็จ');
+    } catch (reorderError) {
+      setError(reorderError.message || 'จัดลำดับหมวดวิชาไม่สำเร็จ');
+      await refresh();
     } finally {
       setSaving(false);
     }
   };
 
-  const reactivateTopicGroup = async (item) => {
-    setSaving(true);
+  const deleteSubjectHandler = async (item) => {
+    if (deletingSubjectId) return; // กันกดรัวจนยิงซ้ำ
+    if (!await confirmDeleteSubject(item.name)) return;
+
+    setDeletingSubjectId(item.id);
     setError('');
     try {
-      await request('PATCH', { type: 'topic-group', id: item.id, subjectId: item.subject_id, name: item.name, description: item.description || '', isActive: true });
-      setNotice('เปิดใช้งานหมวดหลักแล้ว');
+      let result;
+      try {
+        result = await request('DELETE', { type: 'subject', id: item.id });
+      } catch (firstError) {
+        // 409 + HAS_TOPICS แปลว่ายังลบได้ ถ้าแอดมินยอมให้ลบหัวข้อย่อยไปด้วย
+        if (firstError.code !== 'HAS_TOPICS') throw firstError;
+        const topicCount = firstError.details?.topicCount || 0;
+        if (!await confirmCascadeDeleteSubject(item.name, topicCount)) return;
+        result = await request('DELETE', { type: 'subject', id: item.id, cascade: true });
+      }
+
+      // ล้าง state ที่อ้างถึงวิชานี้ก่อน ไม่งั้นฟอร์มค้างชี้ไปยังวิชาที่ไม่มีแล้ว
+      if (subjectForm.id === item.id) setSubjectForm(EMPTY_SUBJECT);
+      if (topic.subjectId === item.id) setTopic(EMPTY_TOPIC);
+      // การ์ดจะหายจากจอตอน refresh เท่านั้น คือหลัง backend ยืนยันว่าลบจริงแล้ว
       await refresh();
-    } catch (reactivateError) {
-      setError(reactivateError.message || 'เปิดใช้งานหมวดหลักไม่สำเร็จ');
+      setNotice(result?.deletedTopics
+        ? `ลบหมวดวิชาและหัวข้อย่อย ${result.deletedTopics} รายการแล้ว`
+        : 'ลบหมวดวิชาแล้ว');
+    } catch (deleteError) {
+      setError(deleteError.message || 'ลบหมวดวิชาไม่สำเร็จ');
     } finally {
-      setSaving(false);
+      setDeletingSubjectId('');
     }
   };
 
@@ -506,6 +604,7 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
         setNotice(`นำเข้าข้อสอบสำเร็จ ${result.insertedCount} ข้อ${result.failedCount ? ` (ข้ามไป ${result.failedCount} ข้อ ดูรายละเอียดด้านล่าง)` : ''}`);
         if (clearJson) setBulkJson('');
         await Promise.all([refresh(), refreshFilteredQuestions()]);
+        return result;
       } else {
         setError('ไม่มีข้อสอบข้อไหนนำเข้าสำเร็จเลย ดูรายละเอียดด้านล่าง');
       }
@@ -532,6 +631,28 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
 
   const importTextQuestions = async (items) => {
     await submitBulkItems(items);
+  };
+
+  const resetAllProgress = async () => {
+    if (!await confirmResetProgress()) return;
+    setResetting(true);
+    setError('');
+    try {
+      const response = await fetch('/api/admin/reset-progress', { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'ล้างสถิติไม่สำเร็จ');
+      setNotice(`ล้างสถิติเรียบร้อย — ลบประวัติการทำข้อสอบ ${result.deletedAttempts} รายการ`);
+    } catch (resetError) {
+      setError(resetError.message || 'ล้างสถิติไม่สำเร็จ');
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  // คืน true เมื่อบันทึกสำเร็จ เพื่อให้แผงอัปโหลดล้างไฟล์ที่เลือกไว้ได้
+  const importFileQuestions = async (items) => {
+    const result = await submitBulkItems(items);
+    return Boolean(result?.insertedCount);
   };
 
   const saveAnnouncement = async (event) => {
@@ -675,7 +796,7 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
   if (accessError) return <AccessDenied message={accessError} />;
 
   return (
-    <div className="max-w-6xl">
+    <div>
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-cyan-600">ADMIN · {bank === 'mock' ? 'MOCK EXAM' : 'แบบฝึกหัดรายวิชา'}</p>
@@ -691,8 +812,10 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
         </div>
       )}
 
-      {error && <Alert tone="error" message={error} onClose={() => setError('')} />}
-      {notice && <Alert tone="success" message={notice} onClose={() => setNotice('')} />}
+      <div ref={alertRef} className="scroll-mt-24">
+        {error && <Alert tone="error" message={error} onClose={() => setError('')} />}
+        {notice && <Alert tone="success" message={notice} onClose={() => setNotice('')} />}
+      </div>
 
       <section className="mb-4 flex flex-wrap items-center gap-2">
         <StatChip icon={Database} label={mockPoolOnly ? 'ข้อสอบพร้อมสุ่มตามสัดส่วน' : 'ข้อสอบที่เปิดใช้'} value={mockPoolOnly ? trackTotalActual : activeQuestions} tone="cyan" />
@@ -727,7 +850,7 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
         </div>
       )}
 
-      {loading ? <div className="h-96 animate-pulse rounded-3xl bg-slate-200/65" /> : null}
+      {loading ? <div className="h-96 skeleton" /> : null}
       {!loading && showSharedTabs && tab === 'overview' && (
         <AdminOverview
           activeQuestions={activeQuestions}
@@ -735,6 +858,8 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
           topics={content.topics.length}
           announcements={content.announcements}
           onNavigate={setTab}
+          onResetProgress={resetAllProgress}
+          resetting={resetting}
         />
       )}
       {!loading && !mockPoolOnly && tab === 'questions' && (
@@ -772,6 +897,8 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
            bulkResult={bulkResult}
            onBulkImport={importBulkQuestions}
            onTextImport={importTextQuestions}
+          onFileImport={importFileQuestions}
+          trackId={bank === 'mock' ? trackId : ''}
          />
       )}
       {!loading && tab === 'sets' && (
@@ -794,27 +921,32 @@ export default function AdminContentManager({ bank, showSharedTabs = true, mockP
         />
       )}
       {!loading && showSharedTabs && tab === 'topics' && (
-        <TopicHierarchyTab
+        <CategoryTab
           topic={topic}
           setTopic={setTopic}
-          topicGroup={topicGroup}
-          setTopicGroup={setTopicGroup}
+          subjectForm={subjectForm}
+          setSubjectForm={setSubjectForm}
           subjects={content.subjects}
           topics={content.topics}
-          topicGroups={content.topicGroups}
+          hierarchyReady={content.hierarchyReady}
+          questionCounts={content.questionCounts}
           saving={saving}
           importing={importing}
-          onSubmit={saveTopic}
-          onGroupSubmit={saveTopicGroup}
-          onCancel={() => setTopic(EMPTY_TOPIC)}
-          onGroupCancel={() => setTopicGroup(EMPTY_TOPIC_GROUP)}
+          onTopicSubmit={saveTopic}
+          onTopicCancel={() => setTopic(EMPTY_TOPIC)}
+          onSubjectSubmit={saveSubject}
+          onSubjectCancel={() => setSubjectForm(EMPTY_SUBJECT)}
+          onReorderSubjects={reorderSubjects}
+          deletingSubjectId={deletingSubjectId}
           onImport={importTopics}
-          onEdit={editTopic}
-          onEditGroup={editTopicGroup}
-          onArchive={archiveTopicHandler}
-          onArchiveGroup={archiveTopicGroup}
-          onReactivate={reactivateTopic}
-          onReactivateGroup={reactivateTopicGroup}
+          onEditTopic={editTopic}
+          onAddChild={startChildTopic}
+          onAddRoot={startRootTopic}
+          onArchiveTopic={archiveTopicHandler}
+          onReactivateTopic={reactivateTopic}
+          onDeleteTopic={deleteTopicHandler}
+          onEditSubject={editSubject}
+          onDeleteSubject={deleteSubjectHandler}
         />
       )}
       {!loading && showSharedTabs && tab === 'announcements' && (
@@ -908,7 +1040,7 @@ function TrackReadiness({ track, rows, totalActual, totalRequired, isReady, expa
   );
 }
 
-function AdminOverview({ activeQuestions, setsCount, topics, announcements, onNavigate }) {
+function AdminOverview({ activeQuestions, setsCount, topics, announcements, onNavigate, onResetProgress, resetting }) {
   const publishedAnnouncements = announcements.filter((item) => item.is_published).length;
   const steps = [
     { icon: Tag, title: '1. ตรวจสอบหัวข้อ', description: 'นำเข้าหรือเพิ่มหัวข้อย่อยให้ครบก่อนเริ่มสร้างข้อสอบ', action: 'จัดการหัวข้อ', tab: 'topics', count: `${topics} หัวข้อ` },
@@ -942,6 +1074,22 @@ function AdminOverview({ activeQuestions, setsCount, topics, announcements, onNa
         <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-start gap-3"><span className="rounded-xl bg-amber-50 p-2.5 text-amber-700"><CircleAlert size={19} /></span><div><h2 className="font-bold text-navy">ก่อนกดเผยแพร่</h2><p className="mt-1 text-sm leading-6 text-graydark/60">ตรวจว่าชุดข้อสอบมีข้อสอบอยู่จริง เลือกสถานะ “เผยแพร่” แล้วจึงเปิดให้ผู้เรียนใช้งาน หากต้องการให้สมาชิกฟรีทำได้ ให้ติ๊ก “ชุดฟรี” ตอนสร้างชุดข้อสอบ</p></div></div></article>
         <article className="rounded-2xl border border-cyan-100 bg-cyan-50/70 p-5"><p className="text-sm font-semibold text-cyan-800">คำแนะนำ</p><p className="mt-2 text-sm leading-6 text-cyan-900/75">นำเข้าหัวข้อเดิมเพียงครั้งเดียว จากนั้นเพิ่มข้อสอบผ่านฟอร์มหรือ JSON ได้เลย</p><button type="button" onClick={() => onNavigate('topics')} className="mt-4 text-sm font-bold text-cyan-800 hover:text-cyan-950">ไปจัดการหัวข้อ →</button></article>
       </section>
+
+      <section className="rounded-2xl border border-red-200 bg-red-50/60 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <span className="rounded-xl bg-red-100 p-2.5 text-red-700"><RotateCcw size={19} /></span>
+            <div>
+              <h2 className="font-bold text-navy">ล้างสถิติการทำข้อสอบทั้งระบบ</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-graydark/65">ลบประวัติการทำข้อสอบของผู้ใช้ทุกคน และสั่งให้ความก้าวหน้าที่ค้างในเครื่องผู้ใช้ถูกล้างอัตโนมัติเมื่อเข้าใช้งานครั้งถัดไป — ข้อสอบในคลังและบัญชีสมาชิกไม่ถูกลบ</p>
+            </div>
+          </div>
+          <button type="button" onClick={onResetProgress} disabled={resetting} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60">
+            {resetting ? <LoaderCircle size={16} className="animate-spin" /> : <RotateCcw size={16} />}
+            {resetting ? "กำลังล้าง..." : "ล้างสถิติทั้งหมด"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -949,7 +1097,7 @@ function AdminOverview({ activeQuestions, setsCount, topics, announcements, onNa
 function QuestionTab({
   bank, trackName, question, setQuestion, subjects, topics, allTopics, sets, allSets, questions, totalCount, filterLoading, saving, onSubmit, onCancel, onEdit, onArchive, onReactivate,
   search, onSearchChange, subjectFilter, onSubjectFilterChange, topicFilter, onTopicFilterChange, topicFilterOptions, statusFilter, onStatusFilterChange,
-  bulkJson, setBulkJson, bulkImporting, bulkResult, onBulkImport, onTextImport,
+  bulkJson, setBulkJson, bulkImporting, bulkResult, onBulkImport, onTextImport, onFileImport, trackId,
 }) {
   const isEditing = Boolean(question.id);
   const setField = (key, value) => setQuestion((current) => ({ ...current, [key]: value }));
@@ -1025,6 +1173,15 @@ function QuestionTab({
         <button type="submit" disabled={saving} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-navy px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-navy/15 transition hover:-translate-y-0.5 hover:bg-[#152856] disabled:cursor-not-allowed disabled:opacity-60"><Save size={17} />{saving ? 'กำลังบันทึก...' : isEditing ? 'บันทึกการแก้ไข' : 'เพิ่มข้อสอบเข้าคลัง'}</button>
       </form>
     </section>
+
+    <QuestionFileImport
+      bank={bank}
+      subjects={subjects}
+      topics={allTopics}
+      trackId={trackId}
+      saving={bulkImporting}
+      onCommit={onFileImport}
+    />
 
     <BulkImportPanel
       bank={bank}
@@ -1266,49 +1423,160 @@ function SetTab({ bank, track, mockPoolOnly, isTrackReady, examSet, setExamSet, 
   </div>;
 }
 
-function TopicTab({ topic, setTopic, subjects, topics, saving, importing, onSubmit, onCancel, onImport, onEdit, onArchive, onReactivate }) {
-  const isEditing = Boolean(topic.id);
-  const grouped = subjects.map((subject) => ({ ...subject, topics: topics.filter((item) => item.subject_id === subject.id) }));
-  return <div className="space-y-7">
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-bold text-navy">{isEditing ? 'แก้ไขหมวดย่อย' : 'หมวดวิชาและหมวดย่อย'}</h2><p className="mt-1 text-sm text-graydark/55">นำเข้าหมวดย่อยที่เคยใช้ในหน้าแบบฝึกหัดได้ครั้งเดียว แล้วเพิ่มรายการใหม่ตามขอบเขตข้อสอบได้ต่อ</p></div><div className="flex gap-2">{isEditing && <button type="button" onClick={onCancel} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-graydark hover:bg-slate-50">ยกเลิกการแก้ไข</button>}{!isEditing && <button type="button" onClick={onImport} disabled={importing} className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3.5 py-2.5 text-sm font-semibold text-cyan-800 hover:bg-cyan-100 disabled:opacity-60"><Database size={17} />{importing ? 'กำลังนำเข้า...' : 'นำเข้าหมวดย่อยเดิม'}</button>}</div></div>
-      <form onSubmit={onSubmit} className="grid gap-3 lg:grid-cols-[0.55fr_0.9fr_1.5fr_auto] lg:items-end"><label className="text-sm font-medium text-graydark">วิชา<select required value={topic.subjectId} onChange={(event) => setTopic((current) => ({ ...current, subjectId: event.target.value }))} className={fieldClass}><option value="">เลือกวิชา</option>{subjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="text-sm font-medium text-graydark">ชื่อหมวดย่อย<input required value={topic.name} onChange={(event) => setTopic((current) => ({ ...current, name: event.target.value }))} placeholder="เช่น การเรียงประโยค" className={fieldClass} /></label><label className="text-sm font-medium text-graydark">คำอธิบาย <span className="font-normal text-graydark/45">(ไม่บังคับ)</span><input value={topic.description} onChange={(event) => setTopic((current) => ({ ...current, description: event.target.value }))} placeholder="อธิบายขอบเขตของหัวข้อนี้" className={fieldClass} /></label><button type="submit" disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl bg-navy px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">{isEditing ? <Save size={17} /> : <Plus size={17} />}{saving ? 'กำลังบันทึก...' : isEditing ? 'บันทึกการแก้ไข' : 'เพิ่มหมวด'}</button></form>
-    </section>
-    <section className="grid gap-4 md:grid-cols-2">{grouped.map((subject) => <article key={subject.id} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="mb-3 flex items-center justify-between gap-3"><h3 className="font-semibold text-navy">{subject.name}</h3><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-graydark">{subject.topics.length} หมวด</span></div>{subject.topics.length ? <div className="space-y-2">{subject.topics.map((item) => <TopicRow key={item.id} item={item} onEdit={() => onEdit(item)} onArchive={() => onArchive(item)} onReactivate={() => onReactivate(item)} />)}</div> : <p className="text-sm text-graydark/45">ยังไม่มีหมวดย่อยในฐานข้อมูล</p>}</article>)}</section>
-  </div>;
+function buildTopicTree(topics, subjectId) {
+  const scoped = topics.filter((item) => item.subject_id === subjectId);
+  const byParent = new Map();
+  for (const item of scoped) {
+    const key = item.parent_id || '__root__';
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key).push(item);
+  }
+  const sortNodes = (list) => [...list].sort((a, b) => (
+    (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'th')
+  ));
+  const attach = (parentKey, depth) => sortNodes(byParent.get(parentKey) || []).map((item) => ({
+    ...item,
+    depth,
+    children: attach(item.id, depth + 1),
+  }));
+  return attach('__root__', 0);
 }
 
-function TopicRow({ item, onEdit, onArchive, onReactivate }) {
-  return <div className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${item.is_active ? 'border-slate-200 bg-slate-50 text-graydark' : 'border-slate-200 bg-slate-50 text-graydark/45'}`}>
-    <span title={item.description || ''} className="min-w-0 truncate">{item.name}{!item.is_active && ' (ปิดใช้งาน)'}</span>
-    <span className="flex shrink-0 gap-1">
-      <button type="button" onClick={onEdit} aria-label={`แก้ไข ${item.name}`} className="rounded p-1 text-graydark/60 hover:bg-white hover:text-cyan-700"><Pencil size={13} /></button>
-      {item.is_active
-        ? <button type="button" onClick={onArchive} aria-label={`ปิดใช้งาน ${item.name}`} className="rounded p-1 text-graydark/60 hover:bg-white hover:text-red-600"><Archive size={13} /></button>
-        : <button type="button" onClick={onReactivate} aria-label={`เปิดใช้งาน ${item.name}`} className="rounded p-1 text-graydark/60 hover:bg-white hover:text-emerald-700"><RotateCcw size={13} /></button>}
-    </span>
-  </div>;
+function countTree(nodes) {
+  return nodes.reduce((total, node) => total + 1 + countTree(node.children), 0);
 }
 
-function TopicHierarchyTab({
-  topic, setTopic, topicGroup, setTopicGroup, subjects, topics, topicGroups, saving, importing,
-  onSubmit, onGroupSubmit, onCancel, onGroupCancel, onImport, onEdit, onEditGroup,
-  onArchive, onArchiveGroup, onReactivate, onReactivateGroup,
+function TopicNode({ node, questionCountByTopic, editingId, onEdit, onAddChild, onArchive, onReactivate, onDelete }) {
+  const questionCount = questionCountByTopic.get(node.id) || 0;
+  const isEditing = editingId === node.id;
+  const hasChildren = node.children.length > 0;
+
+  return (
+    <li>
+      <div className={`flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 transition ${
+        isEditing ? 'border-cyan-400 bg-cyan-50/70 ring-2 ring-cyan-500/15'
+          : node.is_active ? 'border-slate-200 bg-white hover:border-cyan-200'
+          : 'border-slate-200 bg-slate-50 opacity-60'
+      }`}>
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className={`truncate text-sm ${node.depth === 0 ? 'font-bold text-navy' : 'font-medium text-graydark'}`}>{node.name}</span>
+            {node.is_free_practice && <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">ฟรี</span>}
+            {!node.is_active && <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-graydark/70">ปิดใช้งาน</span>}
+            {questionCount > 0 && <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-graydark/65">{questionCount} ข้อ</span>}
+            {hasChildren && <span className="shrink-0 rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-semibold text-cyan-700">{node.children.length} หัวข้อย่อย</span>}
+          </span>
+          {node.description && <span className="mt-0.5 block truncate text-xs text-graydark/45">{node.description}</span>}
+        </span>
+        <span className="flex shrink-0 items-center gap-0.5">
+          <button type="button" onClick={() => onAddChild(node)} title="เพิ่มหัวข้อย่อยข้างใน" aria-label={`เพิ่มหัวข้อย่อยใน ${node.name}`} className="rounded-lg p-1.5 text-graydark/55 hover:bg-cyan-50 hover:text-cyan-700"><Plus size={14} /></button>
+          <button type="button" onClick={() => onEdit(node)} title="แก้ไข" aria-label={`แก้ไข ${node.name}`} className="rounded-lg p-1.5 text-graydark/55 hover:bg-cyan-50 hover:text-cyan-700"><Pencil size={14} /></button>
+          {node.is_active
+            ? <button type="button" onClick={() => onArchive(node)} title="ปิดใช้งาน" aria-label={`ปิดใช้งาน ${node.name}`} className="rounded-lg p-1.5 text-graydark/55 hover:bg-amber-50 hover:text-amber-700"><Archive size={14} /></button>
+            : <button type="button" onClick={() => onReactivate(node)} title="เปิดใช้งาน" aria-label={`เปิดใช้งาน ${node.name}`} className="rounded-lg p-1.5 text-graydark/55 hover:bg-emerald-50 hover:text-emerald-700"><RotateCcw size={14} /></button>}
+          <button type="button" onClick={() => onDelete(node)} title="ลบถาวร" aria-label={`ลบ ${node.name}`} className="rounded-lg p-1.5 text-graydark/55 hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>
+        </span>
+      </div>
+      {hasChildren && (
+        <ul className="mt-1.5 space-y-1.5 border-l-2 border-slate-200 pl-3 sm:pl-4">
+          {node.children.map((child) => (
+            <TopicNode
+              key={child.id}
+              node={child}
+              questionCountByTopic={questionCountByTopic}
+              editingId={editingId}
+              onEdit={onEdit}
+              onAddChild={onAddChild}
+              onArchive={onArchive}
+              onReactivate={onReactivate}
+              onDelete={onDelete}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+function CategoryTab({
+  topic, setTopic, subjectForm, setSubjectForm, subjects, topics, hierarchyReady, questionCounts,
+  saving, importing, onTopicSubmit, onTopicCancel, onSubjectSubmit, onSubjectCancel, onImport,
+  onEditTopic, onAddChild, onAddRoot, onArchiveTopic, onReactivateTopic, onDeleteTopic,
+  onEditSubject, onDeleteSubject, onReorderSubjects, deletingSubjectId,
 }) {
-  const groupsForTopic = topic.subjectId
-    ? topicGroups.filter((group) => group.subject_id === topic.subjectId && group.is_active)
-    : [];
   const isEditingTopic = Boolean(topic.id);
-  const isEditingGroup = Boolean(topicGroup.id);
+  const isEditingSubject = Boolean(subjectForm.id);
+  const [dragId, setDragId] = useState(null);
+  const [dropTargetId, setDropTargetId] = useState(null);
+  const [openSubjects, setOpenSubjects] = useState(() => new Set());
+
+  const toggleSubjectOpen = (id) => setOpenSubjects((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+
+  const handleDrop = (targetId) => {
+    setDropTargetId(null);
+    const sourceId = dragId;
+    setDragId(null);
+    if (!sourceId || sourceId === targetId) return;
+    const ids = subjects.map((item) => item.id);
+    const from = ids.indexOf(sourceId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    onReorderSubjects(ids);
+  };
+  const setTopicField = (key, value) => setTopic((current) => ({ ...current, [key]: value }));
+  const setSubjectField = (key, value) => setSubjectForm((current) => ({ ...current, [key]: value }));
+
+  const questionCountByTopic = useMemo(() => {
+    const counts = new Map();
+    for (const item of questionCounts || []) {
+      if (!item.topic_id || !item.is_active) continue;
+      counts.set(item.topic_id, (counts.get(item.topic_id) || 0) + 1);
+    }
+    return counts;
+  }, [questionCounts]);
+
+  // ตัวเลือก "อยู่ภายใต้" ต้องไม่ให้เลือกตัวเองหรือลูกหลานตัวเอง ไม่งั้นโครงสร้างจะวนกลับ
+  const parentOptions = useMemo(() => {
+    if (!topic.subjectId) return [];
+    const tree = buildTopicTree(topics, topic.subjectId);
+    const flat = [];
+    const walk = (nodes, blocked) => {
+      for (const node of nodes) {
+        const isBlocked = blocked || node.id === topic.id;
+        if (!isBlocked) flat.push({ id: node.id, label: `${'— '.repeat(node.depth)}${node.name}` });
+        walk(node.children, isBlocked);
+      }
+    };
+    walk(tree, false);
+    return flat;
+  }, [topics, topic.subjectId, topic.id]);
+
+  const parentName = topic.parentId
+    ? topics.find((item) => item.id === topic.parentId)?.name || null
+    : null;
 
   return (
     <div className="space-y-7">
+      {!hierarchyReady && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <b>ยังไม่ได้ติดตั้งโครงสร้างลำดับชั้น</b> — กรุณารันไฟล์ <code className="rounded bg-white px-1.5 py-0.5 text-xs">supabase/migrations/20260803_category_hierarchy.sql</code> ใน Supabase SQL Editor ก่อน จึงจะสร้างหัวข้อย่อยและตั้งค่าหัวข้อฟรีได้
+        </div>
+      )}
+
       <section className="rounded-3xl border border-cyan-100 bg-gradient-to-br from-cyan-50 via-white to-blue-50 p-5 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-700">Topic structure</p>
-            <h2 className="mt-1 text-xl font-black text-navy">จัดหัวข้อเป็นชั้น เพื่อให้หน้ามือถือไม่ยาว</h2>
-            <p className="mt-1 max-w-2xl text-sm text-graydark/60">สร้าง “หมวดหลัก” ก่อน เช่น กฎหมายอาญา แล้วกำหนดหัวข้ออย่าง “การใช้กฎหมายอาญา” ไว้ภายในหมวดนั้น</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-700">Category structure</p>
+            <h2 className="mt-1 text-xl font-black text-navy">โครงสร้างหมวดวิชา</h2>
+            <p className="mt-1 max-w-2xl text-sm text-graydark/60">
+              หมวดวิชาหลัก (เช่น กฎหมายที่ประชาชนควรรู้) › หัวข้อหลัก (เช่น กฎหมายอาญา) › หัวข้อย่อย (เช่น การบังคับใช้กฎหมายอาญา) — ซ้อนได้หลายชั้น และหน้าบ้านจะสร้างการ์ดตามลำดับนี้อัตโนมัติ
+            </p>
           </div>
           <button type="button" onClick={onImport} disabled={importing} className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-cyan-800 shadow-sm hover:bg-cyan-50 disabled:opacity-60">
             <Database size={17} />{importing ? 'กำลังนำเข้า...' : 'นำเข้าหัวข้อเดิม'}
@@ -1318,73 +1586,190 @@ function TopicHierarchyTab({
 
       <div className="grid gap-5 xl:grid-cols-2">
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="mb-4"><p className="text-xs font-bold text-cyan-700">ขั้นที่ 1</p><h2 className="mt-1 text-lg font-bold text-navy">{isEditingGroup ? 'แก้ไขหมวดหลัก' : 'เพิ่มหมวดหลัก'}</h2></div>
-          <form onSubmit={onGroupSubmit} className="space-y-3">
-            <label className="block text-sm font-medium text-graydark">วิชา
-              <select required value={topicGroup.subjectId} onChange={(event) => setTopicGroup((current) => ({ ...current, subjectId: event.target.value }))} className={fieldClass}>
-                <option value="">เลือกวิชา</option>{subjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-            </label>
-            <label className="block text-sm font-medium text-graydark">ชื่อหมวดหลัก
-              <input required value={topicGroup.name} onChange={(event) => setTopicGroup((current) => ({ ...current, name: event.target.value }))} placeholder="เช่น กฎหมายอาญา" className={fieldClass} />
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold text-cyan-700">หมวดวิชาหลัก</p>
+              <h3 className="mt-1 text-lg font-bold text-navy">{isEditingSubject ? 'แก้ไขหมวดวิชา' : 'เพิ่มหมวดวิชา'}</h3>
+            </div>
+            {isEditingSubject && <button type="button" onClick={onSubjectCancel} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-graydark hover:bg-slate-50">ยกเลิก</button>}
+          </div>
+          <form onSubmit={onSubjectSubmit} className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm font-medium text-graydark">รหัสวิชา
+                <input required disabled={isEditingSubject} value={subjectForm.subjectId} onChange={(event) => setSubjectField('subjectId', event.target.value)} placeholder="เช่น traffic-law" className={`${fieldClass} disabled:bg-slate-100 disabled:text-graydark/55`} />
+                <span className="mt-1 block text-xs font-normal text-graydark/45">ภาษาอังกฤษ/ตัวเลข ใช้อ้างอิงใน URL แก้ภายหลังไม่ได้</span>
+              </label>
+              <label className="text-sm font-medium text-graydark">ชื่อที่แสดง
+                <input required value={subjectForm.name} onChange={(event) => setSubjectField('name', event.target.value)} placeholder="เช่น กฎหมายจราจร" className={fieldClass} />
+              </label>
+            </div>
+            {/* ลำดับแสดงไม่ต้องพิมพ์แล้ว ใช้การลากการ์ดในรายการด้านล่างแทน */}
+            <label className="block text-sm font-medium text-graydark">ชื่อย่อ <span className="font-normal text-graydark/45">(ไม่บังคับ)</span>
+              <input value={subjectForm.shortName} onChange={(event) => setSubjectField('shortName', event.target.value)} placeholder="เช่น จราจร" className={fieldClass} />
             </label>
             <label className="block text-sm font-medium text-graydark">คำอธิบาย <span className="font-normal text-graydark/45">(ไม่บังคับ)</span>
-              <input value={topicGroup.description} onChange={(event) => setTopicGroup((current) => ({ ...current, description: event.target.value }))} placeholder="ภาพรวมของเนื้อหาในหมวดนี้" className={fieldClass} />
+              <input value={subjectForm.description} onChange={(event) => setSubjectField('description', event.target.value)} placeholder="ขอบเขตเนื้อหาของวิชานี้" className={fieldClass} />
             </label>
-            <div className="flex flex-wrap gap-2"><button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-navy px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">{isEditingGroup ? <Save size={17} /> : <Plus size={17} />}{isEditingGroup ? 'บันทึกหมวดหลัก' : 'เพิ่มหมวดหลัก'}</button>{isEditingGroup && <button type="button" onClick={onGroupCancel} className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-graydark hover:bg-slate-50">ยกเลิก</button>}</div>
+            {isEditingSubject && (
+              <label className="flex items-center gap-2 text-sm text-graydark"><input type="checkbox" checked={subjectForm.isActive} onChange={(event) => setSubjectField('isActive', event.target.checked)} /> เปิดใช้งาน (แสดงบนหน้าผู้เรียน)</label>
+            )}
+            <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-navy px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
+              {isEditingSubject ? <Save size={17} /> : <Plus size={17} />}{saving ? 'กำลังบันทึก...' : isEditingSubject ? 'บันทึกหมวดวิชา' : 'เพิ่มหมวดวิชา'}
+            </button>
           </form>
         </section>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="mb-4"><p className="text-xs font-bold text-violet-700">ขั้นที่ 2</p><h2 className="mt-1 text-lg font-bold text-navy">{isEditingTopic ? 'แก้ไขหมวดย่อย' : 'เพิ่มหมวดย่อย'}</h2></div>
-          <form onSubmit={onSubmit} className="space-y-3">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold text-violet-700">หัวข้อ / หัวข้อย่อย</p>
+              <h3 className="mt-1 text-lg font-bold text-navy">{isEditingTopic ? 'แก้ไขหัวข้อ' : 'เพิ่มหัวข้อ'}</h3>
+              {!isEditingTopic && parentName && <p className="mt-1 text-xs font-semibold text-violet-700">กำลังเพิ่มไว้ใต้: {parentName}</p>}
+            </div>
+            {(isEditingTopic || topic.parentId) && <button type="button" onClick={onTopicCancel} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-graydark hover:bg-slate-50">ยกเลิก</button>}
+          </div>
+          <form onSubmit={onTopicSubmit} className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-sm font-medium text-graydark">วิชา
-                <select required value={topic.subjectId} onChange={(event) => setTopic((current) => ({ ...current, subjectId: event.target.value, groupId: '' }))} className={fieldClass}>
+              <label className="text-sm font-medium text-graydark">หมวดวิชาหลัก
+                <select required value={topic.subjectId} onChange={(event) => setTopic((current) => ({ ...current, subjectId: event.target.value, parentId: '' }))} className={fieldClass}>
                   <option value="">เลือกวิชา</option>{subjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </select>
               </label>
-              <label className="text-sm font-medium text-graydark">หมวดหลัก <span className="font-normal text-graydark/45">(ไม่บังคับ)</span>
-                <select value={topic.groupId} disabled={!topic.subjectId} onChange={(event) => setTopic((current) => ({ ...current, groupId: event.target.value }))} className={`${fieldClass} disabled:bg-slate-100`}>
-                  <option value="">ยังไม่จัดหมวดหลัก</option>{groupsForTopic.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+              <label className="text-sm font-medium text-graydark">อยู่ภายใต้ <span className="font-normal text-graydark/45">(ไม่บังคับ)</span>
+                <select value={topic.parentId} disabled={!topic.subjectId || !hierarchyReady} onChange={(event) => setTopicField('parentId', event.target.value)} className={`${fieldClass} disabled:bg-slate-100`}>
+                  <option value="">เป็นหัวข้อหลัก (ชั้นบนสุด)</option>
+                  {parentOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                 </select>
               </label>
             </div>
-            <label className="block text-sm font-medium text-graydark">ชื่อหมวดย่อย
-              <input required value={topic.name} onChange={(event) => setTopic((current) => ({ ...current, name: event.target.value }))} placeholder="เช่น การใช้กฎหมายอาญา" className={fieldClass} />
-            </label>
+            <div className="grid gap-3 sm:grid-cols-[1fr_0.4fr]">
+              <label className="text-sm font-medium text-graydark">ชื่อหัวข้อ
+                <input required value={topic.name} onChange={(event) => setTopicField('name', event.target.value)} placeholder="เช่น การบังคับใช้กฎหมายอาญา" className={fieldClass} />
+              </label>
+              <label className="text-sm font-medium text-graydark">ลำดับแสดง
+                <input type="number" value={topic.sortOrder} onChange={(event) => setTopicField('sortOrder', event.target.value)} className={fieldClass} />
+              </label>
+            </div>
             <label className="block text-sm font-medium text-graydark">คำอธิบาย <span className="font-normal text-graydark/45">(ไม่บังคับ)</span>
-              <input value={topic.description} onChange={(event) => setTopic((current) => ({ ...current, description: event.target.value }))} placeholder="ขอบเขตย่อยที่นักเรียนจะได้ฝึก" className={fieldClass} />
+              <input value={topic.description} onChange={(event) => setTopicField('description', event.target.value)} placeholder="ขอบเขตที่ผู้เรียนจะได้ฝึกในหัวข้อนี้" className={fieldClass} />
             </label>
-            <div className="flex flex-wrap gap-2"><button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-navy px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">{isEditingTopic ? <Save size={17} /> : <Plus size={17} />}{isEditingTopic ? 'บันทึกหมวดย่อย' : 'เพิ่มหมวดย่อย'}</button>{isEditingTopic && <button type="button" onClick={onCancel} className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-graydark hover:bg-slate-50">ยกเลิก</button>}</div>
+            <label className="flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2.5 text-sm text-graydark">
+              <input type="checkbox" disabled={!hierarchyReady} checked={topic.isFreePractice} onChange={(event) => setTopicField('isFreePractice', event.target.checked)} className="mt-0.5" />
+              <span><span className="font-semibold text-navy">เปิดให้ทำฟรี</span><span className="mt-0.5 block text-xs text-graydark/55">ผู้ที่ยังไม่สมัครสมาชิกทำหัวข้อนี้ได้เลย</span></span>
+            </label>
+            {isEditingTopic && (
+              <label className="flex items-center gap-2 text-sm text-graydark"><input type="checkbox" checked={topic.isActive} onChange={(event) => setTopicField('isActive', event.target.checked)} /> เปิดใช้งาน</label>
+            )}
+            <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-navy px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
+              {isEditingTopic ? <Save size={17} /> : <Plus size={17} />}{saving ? 'กำลังบันทึก...' : isEditingTopic ? 'บันทึกหัวข้อ' : 'เพิ่มหัวข้อ'}
+            </button>
           </form>
         </section>
       </div>
 
       <section className="space-y-4">
-        <div><h2 className="text-lg font-bold text-navy">โครงสร้างที่เผยแพร่</h2><p className="mt-1 text-sm text-graydark/55">หมวดย่อยที่ยังไม่จัดกลุ่มจะแสดงในส่วน “หัวข้ออื่น” เพื่อให้คุณย้ายจัดระเบียบได้ภายหลัง</p></div>
-        <div className="grid gap-4 xl:grid-cols-2">
-          {subjects.map((subject) => {
-            const subjectGroups = topicGroups.filter((group) => group.subject_id === subject.id);
-            const ungrouped = topics.filter((item) => item.subject_id === subject.id && !item.group_id);
-            return (
-              <article key={subject.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex items-center justify-between gap-3"><h3 className="font-bold text-navy">{subject.name}</h3><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-graydark">{topics.filter((item) => item.subject_id === subject.id).length} หัวข้อ</span></div>
-                <div className="space-y-3">
-                  {subjectGroups.map((group) => {
-                    const children = topics.filter((item) => item.group_id === group.id);
-                    return <details key={group.id} className={`rounded-xl border ${group.is_active ? 'border-cyan-100 bg-cyan-50/35' : 'border-slate-200 bg-slate-50 opacity-65'}`} open>
-                      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5"><span><span className="font-semibold text-navy">{group.name}</span><span className="ml-2 text-xs text-graydark/45">{children.length} หัวข้อ</span></span><span className="flex gap-1"><button type="button" onClick={(event) => { event.preventDefault(); onEditGroup(group); }} className="rounded p-1 text-graydark/60 hover:bg-white hover:text-cyan-700" aria-label={`แก้ไข ${group.name}`}><Pencil size={13} /></button>{group.is_active ? <button type="button" onClick={(event) => { event.preventDefault(); onArchiveGroup(group); }} className="rounded p-1 text-graydark/60 hover:bg-white hover:text-red-600" aria-label={`ปิดใช้งาน ${group.name}`}><Archive size={13} /></button> : <button type="button" onClick={(event) => { event.preventDefault(); onReactivateGroup(group); }} className="rounded p-1 text-graydark/60 hover:bg-white hover:text-emerald-700" aria-label={`เปิดใช้งาน ${group.name}`}><RotateCcw size={13} /></button>}</span></summary>
-                      <div className="space-y-2 border-t border-cyan-100 p-3">{children.length ? children.map((item) => <TopicRow key={item.id} item={item} onEdit={() => onEdit(item)} onArchive={() => onArchive(item)} onReactivate={() => onReactivate(item)} />) : <p className="text-xs text-graydark/45">ยังไม่มีหมวดย่อยในหมวดนี้</p>}</div>
-                    </details>;
-                  })}
-                  {ungrouped.length > 0 && <details className="rounded-xl border border-dashed border-amber-200 bg-amber-50/50" open><summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-semibold text-amber-800">หัวข้ออื่น <span className="text-xs font-medium">({ungrouped.length})</span></summary><div className="space-y-2 border-t border-amber-100 p-3">{ungrouped.map((item) => <TopicRow key={item.id} item={item} onEdit={() => onEdit(item)} onArchive={() => onArchive(item)} onReactivate={() => onReactivate(item)} />)}</div></details>}
-                  {!subjectGroups.length && !ungrouped.length && <p className="text-sm text-graydark/45">ยังไม่มีหัวข้อในฐานข้อมูล</p>}
-                </div>
-              </article>
-            );
-          })}
+        <div>
+          <h2 className="text-lg font-bold text-navy">โครงสร้างปัจจุบัน</h2>
+          <p className="mt-1 text-sm text-graydark/55">ลากที่ <GripVertical size={12} className="inline" /> เพื่อสลับลำดับหมวดวิชา · กด <Plus size={12} className="inline" /> บนหัวข้อใดก็ได้เพื่อเพิ่มหัวข้อย่อยข้างใน · หน้าบ้านจะแสดงตามลำดับนี้</p>
         </div>
+        {subjects.length === 0 ? (
+          <EmptyState icon={Tag} title="ยังไม่มีหมวดวิชา" description="เริ่มจากเพิ่มหมวดวิชาหลักด้านบน เช่น กฎหมายที่ประชาชนควรรู้" />
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {subjects.map((subject) => {
+              const tree = buildTopicTree(topics, subject.id);
+              const total = countTree(tree);
+              const isOpen = openSubjects.has(subject.id);
+              const isDeleting = deletingSubjectId === subject.id;
+              const isDragging = dragId === subject.id;
+              const isDropTarget = dropTargetId === subject.id && dragId !== subject.id;
+              return (
+                <article
+                  key={subject.id}
+                  onDragOver={(event) => { event.preventDefault(); setDropTargetId(subject.id); }}
+                  onDragLeave={() => setDropTargetId((current) => (current === subject.id ? null : current))}
+                  onDrop={(event) => { event.preventDefault(); handleDrop(subject.id); }}
+                  className={`rounded-2xl border bg-white p-4 shadow-sm transition ${isDragging ? 'opacity-40' : ''} ${isDropTarget ? 'border-cyan-400 ring-2 ring-cyan-200' : 'border-slate-200'} ${subject.is_active === false ? 'opacity-70' : ''}`}
+                >
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                    <div className="flex min-w-0 items-start gap-2">
+                      <span
+                        draggable
+                        onDragStart={() => setDragId(subject.id)}
+                        onDragEnd={() => { setDragId(null); setDropTargetId(null); }}
+                        title="ลากเพื่อจัดลำดับ"
+                        aria-label={`ลากเพื่อจัดลำดับ ${subject.name}`}
+                        className="mt-0.5 shrink-0 cursor-grab rounded-lg p-1 text-graylight hover:bg-slate-100 hover:text-navy active:cursor-grabbing"
+                      >
+                        <GripVertical size={16} />
+                      </span>
+                      <div className="min-w-0">
+                        <h3 className="flex items-center gap-2 font-bold text-navy">
+                          <span className="truncate">{subject.name}</span>
+                          {subject.is_active === false && <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-graydark/70">ปิดใช้งาน</span>}
+                        </h3>
+                        {/* แสดงชื่อย่อด้วย ไม่งั้นแก้ชื่อย่อแล้วดูเหมือนไม่มีอะไรเปลี่ยน */}
+                        {subject.short_name && subject.short_name !== subject.name && (
+                          <p className="mt-0.5 truncate text-xs font-medium text-cyan-700">ชื่อย่อ: {subject.short_name}</p>
+                        )}
+                        <p className="mt-0.5 text-xs text-graydark/45">รหัส: {subject.id} · {total} หัวข้อ</p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <button type="button" onClick={() => onAddRoot(subject.id)} title="เพิ่มหัวข้อหลัก" aria-label={`เพิ่มหัวข้อหลักใน ${subject.name}`} className="rounded-lg p-1.5 text-graydark/55 hover:bg-cyan-50 hover:text-cyan-700"><Plus size={15} /></button>
+                      <button type="button" onClick={() => onEditSubject(subject)} title="แก้ไขวิชา" aria-label={`แก้ไข ${subject.name}`} className="rounded-lg p-1.5 text-graydark/55 hover:bg-cyan-50 hover:text-cyan-700"><Pencil size={15} /></button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteSubject(subject)}
+                        disabled={Boolean(deletingSubjectId)}
+                        aria-busy={isDeleting}
+                        title="ลบวิชา"
+                        aria-label={`ลบ ${subject.name}`}
+                        className="rounded-lg p-1.5 text-graydark/55 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {isDeleting ? <LoaderCircle size={15} className="animate-spin text-red-600" /> : <Trash2 size={15} />}
+                      </button>
+                    </div>
+                  </div>
+                  {tree.length === 0 ? (
+                    <p className="py-2 text-sm text-graydark/45">ยังไม่มีหัวข้อ — กด <Plus size={12} className="inline" /> เพื่อเพิ่มหัวข้อแรก</p>
+                  ) : (
+                    <>
+                      {/* หัวข้อย่อยมีได้ถึง 30 รายการ จึงพับไว้ก่อน กดค่อยกาง */}
+                      <button
+                        type="button"
+                        onClick={() => toggleSubjectOpen(subject.id)}
+                        aria-expanded={isOpen}
+                        aria-controls={`topics-${subject.id}`}
+                        className="flex w-full items-center justify-between gap-2 rounded-xl px-2 py-2 text-sm font-semibold text-graydark hover:bg-slate-50"
+                      >
+                        <span>{isOpen ? 'ซ่อนหัวข้อย่อย' : `ดูหัวข้อย่อย (${total})`}</span>
+                        <ChevronDown size={16} className={`shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                      <div id={`topics-${subject.id}`} hidden={!isOpen}>
+                        <ul className="mt-1.5 max-h-[26rem] space-y-1.5 overflow-y-auto pr-1">
+                          {tree.map((node) => (
+                            <TopicNode
+                              key={node.id}
+                              node={node}
+                              questionCountByTopic={questionCountByTopic}
+                              editingId={topic.id}
+                              onEdit={onEditTopic}
+                              onAddChild={onAddChild}
+                              onArchive={onArchiveTopic}
+                              onReactivate={onReactivateTopic}
+                              onDelete={onDeleteTopic}
+                            />
+                          ))}
+                        </ul>
+                      </div>
+                    </>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
       </section>
     </div>
   );

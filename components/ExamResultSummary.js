@@ -102,22 +102,22 @@ export default function ExamResultSummary({
   };
 
   return (
-    <div className="mx-auto max-w-6xl pb-10">
+    <div className="mx-auto w-full max-w-app pb-10">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-black text-navy sm:text-2xl">ผลการทำข้อสอบ</h1>
           {(title || subtitle) && <p className="mt-1 text-sm text-graydark/55">{title}{title && subtitle ? ' · ' : ''}{subtitle}</p>}
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => jumpTo(items[0]?.id, 'all')} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold text-navy hover:border-navy/30 sm:text-sm"><BookOpenCheck size={15} />เฉลยข้อสอบ</button>
+          <button type="button" onClick={() => jumpTo(items[0]?.id, 'all')} className="btn-outline"><BookOpenCheck size={15} />เฉลยข้อสอบ</button>
           {weakCategories.length > 0 && (
-            <a href="#result-weakness" className="inline-flex items-center gap-1.5 rounded-xl bg-accent-gold px-3.5 py-2.5 text-xs font-bold text-navy shadow-sm hover:brightness-105 sm:text-sm"><Sparkles size={15} />วิเคราะห์จุดอ่อน</a>
+            <a href="#result-weakness" className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl bg-accent-gold px-3.5 py-2.5 text-sm font-bold text-navy shadow-sm hover:brightness-105"><Sparkles size={15} />วิเคราะห์จุดอ่อน</a>
           )}
         </div>
       </header>
 
-      <section className="mt-5 grid gap-4 lg:grid-cols-3">
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-sm">
+      <section className="mt-5 grid gap-4 lg:grid-cols-3 [&>*]:min-w-0">
+        <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm sm:p-5">
           <div className="relative mx-auto flex h-32 w-32 items-center justify-center rounded-full" style={{ background: `conic-gradient(${passed ? '#4ADE80' : '#f87171'} ${accuracyPct}%, #eef1f6 0)` }}>
             <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-white shadow-inner">
               <p className="text-3xl font-black text-navy">{accuracyPct}%</p>
@@ -134,7 +134,7 @@ export default function ExamResultSummary({
           </div>
         </article>
 
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-sm font-bold text-navy">สรุปผลการทำข้อสอบ</h2>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <SummaryStat label="จำนวนข้อ" value={total} />
@@ -149,7 +149,7 @@ export default function ExamResultSummary({
           </div>
         </article>
 
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-sm font-bold text-navy">คะแนนแยกตามหมวดหมู่</h2>
           <div className="mt-4 space-y-3">
             {categories.map((category) => (
@@ -162,19 +162,19 @@ export default function ExamResultSummary({
         </article>
       </section>
 
-      <section className="mt-4 grid gap-4 lg:grid-cols-3">
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="mt-4 grid gap-4 lg:grid-cols-3 [&>*]:min-w-0">
+        <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-sm font-bold text-navy">รายละเอียดการทำข้อสอบ</h2>
           <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-graydark/55">
             <span className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full bg-emerald-400" />ตอบถูก</span>
             <span className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full bg-red-400" />ตอบผิด</span>
             <span className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full bg-slate-300" />ไม่ตอบ</span>
           </div>
-          <div className="mt-3 grid grid-cols-6 gap-1.5">
+          <div className="mt-3 grid grid-cols-5 gap-1.5 min-[380px]:grid-cols-6 sm:grid-cols-8 lg:grid-cols-6">
             {items.map((item, index) => {
               const status = statusOf(item);
               const tone = status === 'correct' ? 'bg-emerald-400 text-white' : status === 'incorrect' ? 'bg-red-400 text-white' : 'border border-slate-200 text-graydark/50';
-              return <button key={item.id} type="button" onClick={() => jumpTo(item.id, 'all')} className={`aspect-square rounded-lg text-[11px] font-bold transition ${tone}`}>{index + 1}</button>;
+              return <button key={item.id} type="button" onClick={() => jumpTo(item.id, 'all')} className={`flex aspect-square min-h-[2.25rem] items-center justify-center rounded-lg text-xs font-bold transition ${tone}`}>{index + 1}</button>;
             })}
           </div>
           {wrongItems.length > 0 && (
@@ -184,9 +184,9 @@ export default function ExamResultSummary({
                 {wrongItems.slice(0, 6).map((item) => {
                   const index = items.findIndex((questionItem) => questionItem.id === item.id);
                   return (
-                    <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800">
-                      <span className="min-w-0 truncate"><span className="font-bold">{index + 1}.</span> {item.question}</span>
-                      <button type="button" onClick={() => jumpTo(item.id, 'incorrect')} className="shrink-0 font-bold text-red-600 hover:underline">ดูเฉลย</button>
+                    <div key={item.id} className="flex items-start justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+                      <span className="min-w-0 flex-1 line-clamp-2 [overflow-wrap:anywhere]"><span className="font-bold">{index + 1}.</span> {item.question}</span>
+                      <button type="button" onClick={() => jumpTo(item.id, 'incorrect')} className="shrink-0 py-1 font-bold text-red-600 hover:underline">ดูเฉลย</button>
                     </div>
                   );
                 })}
@@ -195,7 +195,7 @@ export default function ExamResultSummary({
           )}
         </article>
 
-        <article id="result-weakness" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <article id="result-weakness" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-sm font-bold text-navy">วิเคราะห์จุดอ่อนของคุณ</h2>
           {weakCategories.length === 0 ? (
             <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-800"><span className="font-bold">ยอดเยี่ยม!</span> ไม่มีหมวดหมู่ที่คะแนนต่ำกว่าเกณฑ์ในรอบนี้</div>
@@ -219,7 +219,7 @@ export default function ExamResultSummary({
           )}
         </article>
 
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-sm font-bold text-navy">พัฒนาการของคุณ</h2>
           {history && history.length >= 2 ? <ProgressSparkline history={history} /> : <p className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-xs text-graydark/50">ทำข้อสอบชุดนี้อีกสักครั้ง เพื่อดูพัฒนาการของคุณ</p>}
           <div className="mt-4 border-t border-slate-100 pt-4">
@@ -236,9 +236,9 @@ export default function ExamResultSummary({
       <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-sm font-bold text-navy"><ListChecks size={18} className="text-accent-cyan" />เฉลยและคำอธิบาย</h2>
-          <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="ตัวกรองเฉลย">
+          <div className="flex w-full flex-wrap gap-2" role="tablist" aria-label="ตัวกรองเฉลย">
             {REVIEW_FILTERS.map((filter) => (
-              <button key={filter.id} type="button" role="tab" aria-selected={reviewFilter === filter.id} onClick={() => setReviewFilter(filter.id)} className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-bold transition ${reviewFilter === filter.id ? 'border-navy bg-navy text-white' : 'border-slate-200 bg-white text-graydark/65 hover:border-cyan-300 hover:text-cyan-700'}`}>{filter.label}</button>
+              <button key={filter.id} type="button" role="tab" aria-selected={reviewFilter === filter.id} onClick={() => setReviewFilter(filter.id)} className={`min-h-[44px] shrink-0 rounded-xl border px-3.5 py-2 text-sm font-bold transition ${reviewFilter === filter.id ? 'border-navy bg-navy text-white' : 'border-slate-200 bg-white text-graydark/65 hover:border-cyan-300 hover:text-cyan-700'}`}>{filter.label}</button>
             ))}
           </div>
         </div>
@@ -252,19 +252,19 @@ export default function ExamResultSummary({
             const tone = status === 'correct' ? 'border-emerald-100 bg-emerald-50/45' : status === 'unanswered' ? 'border-slate-200 bg-slate-50' : 'border-red-100 bg-red-50/45';
             const highlight = jumpedId === item.id ? 'ring-2 ring-accent-cyan' : '';
             return (
-              <article key={item.id} id={`result-question-${item.id}`} className={`rounded-2xl border p-4 transition sm:p-5 ${tone} ${highlight}`}>
+              <article key={item.id} id={`result-question-${item.id}`} className={`min-w-0 break-words rounded-2xl border p-4 transition [overflow-wrap:anywhere] sm:p-5 ${tone} ${highlight}`}>
                 <div className="flex gap-3">
                   <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${status === 'correct' ? 'bg-emerald-500 text-white' : status === 'unanswered' ? 'bg-slate-200 text-slate-600' : 'bg-red-500 text-white'}`}>
                     {status === 'correct' ? <CheckCircle2 size={16} /> : status === 'unanswered' ? <Clock3 size={15} /> : <XCircle size={16} />}
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2"><span className="text-xs font-bold text-graydark/45">ข้อ {index + 1}</span>{item.categoryName && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-graydark/60">{item.categoryName}</span>}</div>
-                    <h3 className="mt-1.5 text-sm font-bold leading-6 text-navy sm:text-base">{item.question}</h3>
-                    <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                    <h3 className="mt-1.5 text-[15px] font-bold leading-6 text-navy sm:text-base">{item.question}</h3>
+                    <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                       <p className="rounded-xl bg-white/80 px-3 py-2.5 text-graydark/70"><span className="font-bold">คำตอบของคุณ: </span>{status === 'unanswered' ? 'ไม่ได้เลือกคำตอบ' : item.choices[item.selectedIndex]}</p>
                       {status !== 'correct' && <p className="rounded-xl bg-emerald-50 px-3 py-2.5 text-emerald-800"><span className="font-bold">คำตอบที่ถูก: </span>{item.choices[item.answerIndex]}</p>}
                     </div>
-                    {item.explanation && <div className="mt-3 rounded-xl border border-white/80 bg-white/70 px-3 py-3 text-xs leading-5 text-graydark/70"><span className="font-bold text-navy">อธิบาย: </span>{item.explanation}</div>}
+                    {item.explanation && <div className="mt-3 rounded-xl border border-white/80 bg-white/70 px-3 py-3 text-sm leading-relaxed text-graydark/70"><span className="font-bold text-navy">อธิบาย: </span>{item.explanation}</div>}
                   </div>
                 </div>
               </article>
@@ -273,22 +273,22 @@ export default function ExamResultSummary({
         </div>
       </section>
 
-      <div className="mt-5 flex flex-col gap-2.5 sm:flex-row sm:justify-between">
+      <div className="mt-5 flex flex-col gap-2.5 pb-[env(safe-area-inset-bottom)] sm:flex-row sm:justify-between">
         {backHref
-          ? <Link href={backHref} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-navy hover:border-navy/30"><ArrowLeft size={16} />{backLabel}</Link>
+          ? <Link href={backHref} className="btn-outline w-full sm:w-auto"><ArrowLeft size={16} />{backLabel}</Link>
           : onBack
-            ? <button type="button" onClick={onBack} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-navy hover:border-navy/30"><ArrowLeft size={16} />{backLabel}</button>
+            ? <button type="button" onClick={onBack} className="btn-outline w-full sm:w-auto"><ArrowLeft size={16} />{backLabel}</button>
             : <span />}
-        <div className="flex flex-col gap-2.5 sm:flex-row">
+        <div className="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row">
           {(onRetrySame || retrySameHref) && (
             retrySameHref
-              ? <Link href={retrySameHref} className="inline-flex items-center justify-center gap-2 rounded-xl border border-navy/20 px-5 py-3 text-sm font-bold text-navy hover:bg-navy/5"><RotateCcw size={16} />ทำชุดเดิม</Link>
-              : <button type="button" onClick={onRetrySame} className="inline-flex items-center justify-center gap-2 rounded-xl border border-navy/20 px-5 py-3 text-sm font-bold text-navy hover:bg-navy/5"><RotateCcw size={16} />ทำชุดเดิม</button>
+              ? <Link href={retrySameHref} className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-navy/20 px-5 py-3 text-sm font-bold text-navy hover:bg-navy/5 sm:w-auto"><RotateCcw size={16} />ทำชุดเดิม</Link>
+              : <button type="button" onClick={onRetrySame} className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-navy/20 px-5 py-3 text-sm font-bold text-navy hover:bg-navy/5 sm:w-auto"><RotateCcw size={16} />ทำชุดเดิม</button>
           )}
           {(onRetryNew || newHref) && (
             newHref
-              ? <Link href={newHref} className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent-gold px-5 py-3 text-sm font-bold text-navy shadow-lg shadow-accent-gold/20 hover:brightness-105">{newLabel}</Link>
-              : <button type="button" onClick={onRetryNew} className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent-gold px-5 py-3 text-sm font-bold text-navy shadow-lg shadow-accent-gold/20 hover:brightness-105">{newLabel}</button>
+              ? <Link href={newHref} className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-accent-gold px-5 py-3 text-sm font-bold text-navy shadow-lg shadow-accent-gold/20 hover:brightness-105 sm:w-auto">{newLabel}</Link>
+              : <button type="button" onClick={onRetryNew} className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-accent-gold px-5 py-3 text-sm font-bold text-navy shadow-lg shadow-accent-gold/20 hover:brightness-105 sm:w-auto">{newLabel}</button>
           )}
         </div>
       </div>

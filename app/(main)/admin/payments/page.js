@@ -142,7 +142,7 @@ export default function AdminPaymentsPage() {
   if (accessError) return <AccessDenied message={accessError} />;
 
   return (
-    <div className="max-w-6xl">
+    <div>
       <header className="flex items-start justify-between gap-4 flex-wrap mb-8">
         <div><p className="text-sm text-accent-cyan font-medium mb-1">ADMIN · SUPABASE</p><h1 className="text-2xl sm:text-3xl font-semibold text-navy">ตรวจสอบสลิปสมาชิก</h1><p className="text-graydark/60 mt-1">ข้อมูลสลิปและสิทธิ์สมาชิกจัดเก็บในฐานข้อมูลกลาง</p></div>
         <div className="rounded-xl bg-navy text-white px-4 py-3 flex items-center gap-2 text-sm"><ShieldCheck size={18} className="text-accent-cyan" /> ผู้ดูแลระบบ</div>

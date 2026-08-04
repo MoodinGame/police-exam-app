@@ -61,6 +61,12 @@ function calculateGroups(rows, field, labelField) {
     current.answered += attempt.total_questions || 0;
     current.correct += attempt.correct_answers || 0;
     current.sessions += 1;
+    // rows เรียงจากใหม่ไปเก่า ครั้งแรกที่เจอหัวข้อนี้จึงเป็นผลล่าสุด — การ์ดแบบฝึกหัดใช้ตัวนี้แสดง "เคยทำแล้ว"
+    if (current.lastTotal === undefined) {
+      current.lastScore = attempt.correct_answers || 0;
+      current.lastTotal = attempt.total_questions || 0;
+      current.lastAt = attempt.completed_at || null;
+    }
     groups.set(id, current);
   });
   return [...groups.values()].map((item) => ({

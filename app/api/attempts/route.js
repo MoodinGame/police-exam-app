@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { isFreePracticeTopic } from '@/lib/entitlements';
-import { canAccessExamSet, canUseArea, getUserAccess } from '@/lib/serverAccess';
+import { canAccessExamSet, canUseArea, getFreePracticeTopicKeys, getUserAccess } from '@/lib/serverAccess';
 import { requireCurrentUser } from '@/lib/serverUser';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
@@ -99,9 +98,12 @@ export async function POST(request) {
     if (questionError) throw questionError;
     if ((questions || []).length !== questionIds.length) throw requestError('ข้อสอบบางข้อไม่พร้อมใช้งานแล้ว', 409);
     if (!set && !canUseArea(access, 'practice')) {
-      const onlyFreePracticeQuestions = bank !== 'mock' && (questions || []).every(
-        (question) => isFreePracticeTopic(question.content_topics?.legacy_id),
-      );
+      // เช็คสิทธิ์ตอนส่งคำตอบให้ตรงกับตอนเข้าทำ — อ่าน flag ชุดฟรีจาก DB เหมือนกัน
+      const topicKeys = (questions || []).map((question) => question.content_topics?.legacy_id || question.topic_id);
+      const freeTopicKeys = await getFreePracticeTopicKeys(supabase, topicKeys);
+      const onlyFreePracticeQuestions = bank !== 'mock'
+        && topicKeys.length > 0
+        && topicKeys.every((key) => key && freeTopicKeys.has(key));
       if (!onlyFreePracticeQuestions) throw requestError('ชุดข้อสอบนี้สำหรับสมาชิก', 403);
     }
 

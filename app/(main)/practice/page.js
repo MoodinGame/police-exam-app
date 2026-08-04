@@ -3,11 +3,9 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Search, X, AlertCircle, Sparkles, Check, Lock } from 'lucide-react';
-import { subjects } from '@/lib/subjects';
-import { topics, topicsBySubject } from '@/lib/topics';
-import { subjectStyles } from '@/lib/subjectStyles';
-import { getSubjectProgress, getTopicProgress, getWrongBySubject } from '@/lib/progress';
-import { isFreePracticeTopic } from '@/lib/entitlements';
+import { resolveSubjects } from '@/lib/subjectCatalog';
+import { getSubjectStyle, subjectStyles } from '@/lib/subjectStyles';
+import { useProgressStats } from '@/lib/useProgressStats';
 import { useMembershipStatus } from '@/lib/useMembershipStatus';
 import { useExamCatalog } from '@/lib/useExamCatalog';
 import PracticeFilter, { EMPTY_FILTER } from '@/components/PracticeFilter';
@@ -15,9 +13,11 @@ import PublishedExamSetCard from '@/components/PublishedExamSetCard';
 import ResumeBanner from '@/components/ResumeBanner';
 
 const PASS_PCT = 60;
+// ต้องเป็น reference คงที่ กัน useMemo คำนวณใหม่ทุก render
+const EMPTY_TOPIC_COUNTS = {};
 
 function SubjectCard({ subject, progress }) {
-  const style = subjectStyles[subject.id];
+  const style = getSubjectStyle(subject.id, subject.shortName);
   const Icon = style.icon;
   const progressPct = progress?.progressPct ?? 0;
   const accuracyPct = progress?.accuracyPct ?? null;
@@ -25,13 +25,16 @@ function SubjectCard({ subject, progress }) {
   return (
     <Link
       href={`/practice/${subject.id}`}
-      className={`rounded-2xl p-6 text-white flex flex-col shadow-[0_14px_30px_rgba(43,45,66,0.15)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_38px_rgba(43,45,66,0.24)] ${style.color}`}
+      className={`rounded-2xl p-6 text-white flex flex-col shadow-[0_16px_40px_rgba(30,64,100,0.14)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_38px_rgba(30,64,100,0.24)] ${style.color}`}
     >
       <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center mb-4">
         <Icon size={20} />
       </div>
       <h3 className="text-lg font-semibold mb-1">{subject.name}</h3>
-      <p className="text-sm text-white/75 mb-4 leading-relaxed">{subject.description}</p>
+      {/* คำอธิบายมาจากหลังบ้าน ถ้ายังไม่ได้กรอกก็เว้นไว้ ไม่เติมข้อความสมมติแทน */}
+      {subject.description && (
+        <p className="text-sm text-white/75 mb-4 leading-relaxed">{subject.description}</p>
+      )}
       <p className="text-xs text-white/70 mb-3">เลือกหมวดเพื่อเริ่มทำแบบฝึกหัด</p>
 
       <div className="mt-auto">
@@ -55,12 +58,14 @@ function SubjectCard({ subject, progress }) {
   );
 }
 
-function SetCard({ topic, attempt, isMember, isLoggedIn, accessLoading }) {
-  const style = subjectStyles[topic.subjectId];
-  const subject = subjects.find((s) => s.id === topic.subjectId);
+// subject ส่งเข้ามาเป็น prop เพราะรายชื่อวิชามาจาก catalog ในคอมโพเนนต์หลัก
+function SetCard({ topic, subject, attempt, isMember, isLoggedIn, accessLoading }) {
+  const style = getSubjectStyle(topic.subjectId);
   const pct = attempt ? Math.round((attempt.score / attempt.total) * 100) : null;
   const passed = pct !== null && pct >= PASS_PCT;
-  const isFreeTrial = isFreePracticeTopic(topic.id);
+  // ต้องยึด is_free_practice จากฐานข้อมูลอย่างเดียว ให้ตรงกับด่านตรวจสิทธิ์ฝั่งเซิร์ฟเวอร์
+  // ไม่งั้นจะขึ้นป้าย "ทดลองฟรี" แล้วกดเข้าไปโดนปฏิเสธ
+  const isFreeTrial = Boolean(topic.isFreePractice);
   const canStart = topic.available && !accessLoading && (isMember || (isFreeTrial && isLoggedIn));
 
   return (
@@ -96,21 +101,58 @@ function SetCard({ topic, attempt, isMember, isLoggedIn, accessLoading }) {
 export default function PracticePage() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState(EMPTY_FILTER);
-  const [stats, setStats] = useState(null);
   const { loading: accessLoading, isLoggedIn, isMember } = useMembershipStatus();
   const { data: examCatalog, loading: catalogLoading } = useExamCatalog('practice');
   const publishedSets = examCatalog?.sets || [];
+  const topicQuestionCounts = examCatalog?.topicQuestionCounts || EMPTY_TOPIC_COUNTS;
+  // ชื่อ/คำอธิบายวิชามาจากฐานข้อมูลเท่านั้น แอดมินแก้แล้วต้องเห็นผลทันที
+  // และวิชาที่ถูกลบต้องหายจากหน้านี้ด้วย
+  const subjects = useMemo(() => resolveSubjects(examCatalog?.subjects), [examCatalog]);
+  // ใช้หมวดย่อยจากฐานข้อมูลเท่านั้น ไม่ fallback ไปรายการ hardcode เดิม
+  // ไม่งั้นตอนคลังว่างจะขึ้นการ์ดหลอกที่กดทำไม่ได้
+  const catalogTopics = useMemo(() => (examCatalog?.topics || []).map((topic) => {
+    const id = topic.legacy_id || topic.id;
+    return {
+      id,
+      rowId: topic.id,
+      parentId: topic.parent_id || '',
+      subjectId: topic.subject_id,
+      name: topic.name,
+      description: topic.description || 'แบบฝึกหัดตามหัวข้อที่ผู้ดูแลกำหนด',
+      questionCount: topicQuestionCounts[id] || 0,
+      available: (topicQuestionCounts[id] || 0) > 0,
+      isFreePractice: Boolean(topic.is_free_practice),
+    };
+  }), [examCatalog, topicQuestionCounts]);
 
-  // อ่าน localStorage หลัง mount เท่านั้น เพื่อไม่ให้ markup ตอน SSR กับตอน hydrate ต่างกัน
-  useEffect(() => {
+  // สถิติทั้งหมดมาจาก exam_attempts ในฐานข้อมูล (ผ่าน /api/stats) ไม่ใช่ localStorage
+  const { loading: progressLoading, stats: dbStats, topicProgress } = useProgressStats();
+  const stats = useMemo(() => {
+    if (progressLoading) return null;
+
+    // ความก้าวหน้ารายวิชา = จำนวนหัวข้อที่เคยทำ เทียบกับหัวข้อทั้งหมดของวิชานั้น
     const subjectProgress = {};
-    for (const s of subjects) subjectProgress[s.id] = getSubjectProgress(s.id, topicsBySubject(s.id));
+    for (const subject of subjects) {
+      const topicsOfSubject = catalogTopics.filter((topic) => topic.subjectId === subject.id);
+      const attempted = topicsOfSubject.filter((topic) => topicProgress[topic.id]).length;
+      const bySubject = (dbStats?.subjectStats || []).find((item) => item.id === subject.id);
+      subjectProgress[subject.id] = {
+        progressPct: topicsOfSubject.length ? Math.round((attempted / topicsOfSubject.length) * 100) : 0,
+        accuracyPct: bySubject?.pct ?? null,
+      };
+    }
 
-    const topicAttempts = {};
-    for (const t of topics) topicAttempts[t.id] = getTopicProgress(t.id);
+    const wrongBySubject = (dbStats?.subjectStats || [])
+      .filter((item) => item.pct !== null && item.answered > item.correct)
+      .map((item) => ({
+        subjectId: item.id,
+        wrong: item.answered - item.correct,
+        wrongPct: item.answered ? Math.round(((item.answered - item.correct) / item.answered) * 100) : 0,
+      }))
+      .sort((a, b) => b.wrong - a.wrong);
 
-    setStats({ subjectProgress, topicAttempts, wrongBySubject: getWrongBySubject() });
-  }, []);
+    return { subjectProgress, topicAttempts: topicProgress, wrongBySubject };
+  }, [progressLoading, dbStats, topicProgress, catalogTopics, subjects]);
 
   const q = query.trim().toLowerCase();
 
@@ -119,7 +161,7 @@ export default function PracticePage() {
 
   const visibleSets = useMemo(() => {
     if (!showingSets) return [];
-    return topics
+    return catalogTopics
       .filter((t) => {
         if (!filter.topics.includes(t.id)) return false;
         if (q && !`${t.name} ${t.description}`.toLowerCase().includes(q)) return false;
@@ -130,7 +172,7 @@ export default function PracticePage() {
         return true;
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'th'));
-  }, [showingSets, filter, q, stats]);
+  }, [showingSets, filter, q, stats, catalogTopics]);
 
   const visibleSubjects = useMemo(() => {
     return subjects.filter((s) => {
@@ -144,22 +186,23 @@ export default function PracticePage() {
 
       if (!q) return true;
       const short = subjectStyles[s.id]?.short ?? '';
-      const setNames = topicsBySubject(s.id)
+      const setNames = catalogTopics
+        .filter((t) => t.subjectId === s.id)
         .map((t) => `${t.name} ${t.description}`)
         .join(' ');
       return `${s.name} ${s.description} ${short} ${setNames}`.toLowerCase().includes(q);
     });
-  }, [filter, q, stats]);
+  }, [filter, q, stats, catalogTopics, subjects]);
 
-  const attemptedTopics = stats ? topics.filter((t) => stats.topicAttempts[t.id]).length : 0;
-  const overallPct = topics.length ? Math.round((attemptedTopics / topics.length) * 100) : 0;
+  const attemptedTopics = stats ? catalogTopics.filter((t) => stats.topicAttempts[t.id]).length : 0;
+  const overallPct = catalogTopics.length ? Math.round((attemptedTopics / catalogTopics.length) * 100) : 0;
   const filterActive =
     filter.subjects.length > 0 || filter.topics.length > 0 || filter.status !== 'all';
   const isFiltering = filterActive || q !== '';
 
   const recommended = useMemo(() => {
     if (!stats) return [];
-    const available = topics.filter((t) => t.available);
+    const available = catalogTopics.filter((t) => t.available);
     const untouched = available.filter((t) => !stats.topicAttempts[t.id]);
     if (untouched.length > 0) return untouched.slice(0, 8);
     return [...available]
@@ -169,7 +212,7 @@ export default function PracticePage() {
         return ra.score / ra.total - rb.score / rb.total;
       })
       .slice(0, 8);
-  }, [stats]);
+  }, [stats, catalogTopics]);
 
   return (
     <div>
@@ -199,12 +242,12 @@ export default function PracticePage() {
             />
           </div>
           <p className="text-[11px] text-graydark/40 mt-2">
-            ทำแล้ว {attemptedTopics} จาก {topics.length} ชุด
+            ทำแล้ว {attemptedTopics} จาก {catalogTopics.length} ชุด
           </p>
         </div>
       </div>
 
-      {!accessLoading && !isMember && <section className="mb-5 flex flex-col gap-3 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/90 to-cyan-50/70 p-4 shadow-[0_10px_24px_rgba(0,180,216,0.08)] sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-accent-cyan shadow-sm"><Sparkles size={17} /></span><div><p className="text-sm font-semibold text-navy">ทดลองใช้ฟรี 6 ชุด · วิชาละ 1 ชุด</p><p className="mt-0.5 text-xs leading-5 text-graydark/60">มองหาป้าย “ทดลองฟรี” แล้วเข้าสู่ระบบด้วย OTP เพื่อเริ่มทำ ส่วนชุดอื่นเปิดสำหรับสมาชิก</p></div></div><Link href={isLoggedIn ? '/account' : '/login'} className="btn-navy shrink-0">{isLoggedIn ? 'ดูสมาชิก' : 'เข้าสู่ระบบ'}</Link></section>}
+      {!accessLoading && !isMember && <section className="mb-5 flex flex-col gap-3 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/90 to-cyan-50/70 p-4 shadow-[0_10px_24px_rgba(79,134,247,0.08)] sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-accent-cyan shadow-sm"><Sparkles size={17} /></span><div><p className="text-sm font-semibold text-navy">ทดลองใช้ฟรี 6 ชุด · วิชาละ 1 ชุด</p><p className="mt-0.5 text-xs leading-5 text-graydark/60">มองหาป้าย “ทดลองฟรี” แล้วเข้าสู่ระบบด้วย OTP เพื่อเริ่มทำ ส่วนชุดอื่นเปิดสำหรับสมาชิก</p></div></div><Link href={isLoggedIn ? '/account' : '/login'} className="btn-navy shrink-0">{isLoggedIn ? 'ดูสมาชิก' : 'เข้าสู่ระบบ'}</Link></section>}
 
       <div className="flex items-stretch gap-3 mb-4">
         <div className="relative flex-1">
@@ -229,7 +272,7 @@ export default function PracticePage() {
           )}
         </div>
 
-        <PracticeFilter value={filter} onChange={setFilter} />
+        <PracticeFilter value={filter} onChange={setFilter} topicItems={catalogTopics} subjectItems={subjects} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-8">
@@ -253,7 +296,7 @@ export default function PracticePage() {
                 : 'border-graylight/30 text-graydark hover:border-accent-cyan/50'
             }`}
           >
-            {subjectStyles[s.id].short}
+            {getSubjectStyle(s.id, s.shortName).short}
           </button>
         ))}
         {isFiltering && (
@@ -329,7 +372,7 @@ export default function PracticePage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {visibleSets.map((t) => (
-                <SetCard key={t.id} topic={t} attempt={stats?.topicAttempts[t.id] ?? null} isMember={isMember} isLoggedIn={isLoggedIn} accessLoading={accessLoading} />
+                <SetCard key={t.id} topic={t} subject={subjects.find((s) => s.id === t.subjectId)} attempt={stats?.topicAttempts[t.id] ?? null} isMember={isMember} isLoggedIn={isLoggedIn} accessLoading={accessLoading} />
               ))}
             </div>
           )}
@@ -372,8 +415,8 @@ export default function PracticePage() {
 
           <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
             {recommended.map((t) => {
-              const style = subjectStyles[t.subjectId];
-              const isFreeTrial = isFreePracticeTopic(t.id);
+              const style = getSubjectStyle(t.subjectId);
+              const isFreeTrial = Boolean(t.isFreePractice);
               const canStart = !accessLoading && (isMember || (isFreeTrial && isLoggedIn));
               return (
                 <div

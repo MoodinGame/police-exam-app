@@ -6,8 +6,10 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   AlertCircle,
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
-  Flag,
+  ListOrdered,
   LockKeyhole,
   LogIn,
   PauseCircle,
@@ -17,12 +19,39 @@ import { fetchMockExam } from '@/lib/mockExamClient';
 import { saveMockAttempt } from '@/lib/mockExamProgress';
 import { clearSessionIf, getSessionFor, mockSessionId, saveSession } from '@/lib/examSession';
 import { confirmIncompleteAnswers } from '@/lib/sweetAlert';
-import { subjects } from '@/lib/subjects';
+import { useSubjects } from '@/lib/subjectCatalog';
 import { useAttemptHistory } from '@/lib/useAttemptHistory';
 import { noCopyHandlers } from '@/lib/copyProtection';
 import ExamResultSummary from '@/components/ExamResultSummary';
 
 const LETTERS = ['A', 'B', 'C', 'D'];
+
+// วงแหวนความคืบหน้าชุดเดียวกับแบบฝึกหัดรายวิชา
+function ProgressRing({ pct }) {
+  const r = 34;
+  const c = 2 * Math.PI * r;
+  return (
+    <div className="relative w-24 h-24">
+      <svg viewBox="0 0 80 80" className="w-24 h-24 -rotate-90">
+        <circle cx="40" cy="40" r={r} fill="none" strokeWidth="7" className="stroke-graylight/25" />
+        <circle
+          cx="40"
+          cy="40"
+          r={r}
+          fill="none"
+          strokeWidth="7"
+          strokeLinecap="round"
+          className="stroke-accent-cyan transition-all duration-300"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - pct / 100)}
+        />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-lg font-bold text-navy">
+        {pct}%
+      </span>
+    </div>
+  );
+}
 
 function formatTime(seconds) {
   const safeSeconds = Math.max(0, seconds || 0);
@@ -42,6 +71,8 @@ export default function MockExamTakingPage() {
   const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(true);
   const sessionId = mockSessionId(slug);
+  // ต้องเรียกก่อน early return ด้านล่าง เพื่อให้ลำดับ hook คงที่ทุก render
+  const { findSubject } = useSubjects();
 
   useEffect(() => {
     let active = true;
@@ -231,12 +262,12 @@ export default function MockExamTakingPage() {
       selectedIndex: answers[item.id],
       explanation: item.explanation,
       categoryId: item.subjectId,
-      categoryName: subjects.find((subjectItem) => subjectItem.id === item.subjectId)?.name || null,
+      categoryName: findSubject(item.subjectId)?.name || null,
     }));
 
     return (
-      <main className="min-h-screen bg-[radial-gradient(circle_at_8%_0%,rgba(0,180,216,0.12),transparent_24rem),radial-gradient(circle_at_94%_12%,rgba(216,176,107,0.13),transparent_25rem),#f6f8fc] px-4 py-6 sm:py-9">
-        <div className="mx-auto max-w-6xl">
+      <main className="min-h-screen bg-[radial-gradient(circle_at_8%_0%,rgba(79,134,247,0.12),transparent_24rem),radial-gradient(circle_at_94%_12%,rgba(216,176,107,0.13),transparent_25rem),#f6f8fc] px-4 py-6 sm:py-9">
+        <div className="mx-auto max-w-app">
           <Link href="/mock-exam" className="inline-flex items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold text-graydark/65 transition hover:bg-white hover:text-navy">
             <ArrowLeft size={17} /> กลับไปหน้าข้อสอบเสมือนจริง
           </Link>
@@ -250,8 +281,8 @@ export default function MockExamTakingPage() {
 
   return (
     <div className="min-h-screen bg-graylight/10">
-      <header className="bg-white border-b border-graylight/25">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+      <header className="bg-white border-b border-graylight/30">
+        <div className="max-w-app mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
           <div className="min-w-0 flex items-center gap-4">
             <div className="min-w-0">
               <p className="text-[11px] text-graydark/50">ชุดข้อสอบ</p>
@@ -267,10 +298,15 @@ export default function MockExamTakingPage() {
         </div>
       </header>
 
+      {/* แถบความคืบหน้าเหมือนแบบฝึกหัด */}
+      <div className="h-1 bg-graylight/20">
+        <div className="h-full bg-accent-cyan transition-all" style={{ width: `${progress}%` }} />
+      </div>
+
       <div className="sm:hidden px-4 pt-4 text-sm font-bold tabular-nums text-navy inline-flex items-center gap-1"><Clock3 size={15} /> {formatTime(secondsLeft)}</div>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-7 grid gap-5 xl:grid-cols-[230px_minmax(0,1fr)_250px]">
-        <aside className="hidden xl:block bg-white border border-graylight/25 rounded-2xl p-5 h-fit sticky top-5">
+      <main className="max-w-app mx-auto px-4 sm:px-6 py-5 sm:py-7 grid gap-5 xl:grid-cols-[230px_minmax(0,1fr)_250px]">
+        <aside className="hidden xl:block bg-white border border-graylight/30 rounded-2xl p-5 h-fit sticky top-5">
           <QuestionNavigator
             questions={questions}
             answers={answers}
@@ -282,11 +318,97 @@ export default function MockExamTakingPage() {
         </aside>
 
         <section className="min-w-0">
-          <button type="button" onClick={() => setShowNavigator((value) => !value)} className="xl:hidden w-full mb-3 bg-white border border-graylight/25 rounded-xl px-4 py-3 text-sm font-medium text-navy">
-            {showNavigator ? 'ซ่อนรายการข้อสอบ' : 'ดูรายการข้อสอบ'} · ทำแล้ว {answeredCount}/{questions.length}
-          </button>
+          {/* แผงคำถามใช้โครงเดียวกับแบบฝึกหัดรายวิชา เพื่อให้ผู้สอบเจอหน้าตาเดิมทั้งสองโหมด */}
+          <div className="border border-graylight/30 rounded-2xl p-5 sm:p-6 bg-white no-copy" {...noCopyHandlers}>
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <p className="font-semibold text-navy">
+                ข้อที่ {current + 1} / {questions.length}
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowNavigator((value) => !value)}
+                className="xl:hidden flex items-center gap-1.5 text-xs text-graydark/60 border border-graylight/40 rounded-lg px-3 py-1.5"
+              >
+                <ListOrdered size={13} />
+                {showNavigator ? 'ซ่อนรายการข้อ' : 'รายการข้อ'}
+              </button>
+            </div>
+
+            <h2 className="text-base sm:text-lg font-medium text-graydark leading-relaxed mb-5">
+              {question.question}
+            </h2>
+
+            <div className="space-y-2.5">
+              {question.choices.map((choice, index) => {
+                const selected = answers[question.id] === index;
+                return (
+                  <button
+                    key={`${choice}-${index}`}
+                    type="button"
+                    onClick={() => setAnswers((old) => ({ ...old, [question.id]: index }))}
+                    className={`w-full flex items-center gap-3 text-left px-3 sm:px-4 py-3 rounded-xl border transition-colors ${
+                      selected
+                        ? 'border-accent-cyan bg-accent-cyan/10 text-navy font-medium'
+                        : 'border-graylight/40 text-graydark hover:border-navy/40'
+                    }`}
+                  >
+                    <span
+                      className={`w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-xs font-semibold ${
+                        selected ? 'bg-accent-cyan text-white' : 'bg-graylight/20 text-graydark/60'
+                      }`}
+                    >
+                      {LETTERS[index]}
+                    </span>
+                    <span className="text-sm sm:text-base">{choice}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <label className="flex items-center gap-2 mt-5 text-sm text-graydark/70 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={Boolean(flagged[question.id])}
+                onChange={(event) => setFlagged((old) => ({ ...old, [question.id]: event.target.checked }))}
+                className="w-4 h-4 accent-amber-400"
+              />
+              ไม่แน่ใจ ข้ามไปตอบภายหลัง
+            </label>
+
+            <div className="flex items-center justify-between gap-3 mt-6 pt-5 border-t border-graylight/20">
+              <button
+                type="button"
+                disabled={current === 0}
+                onClick={() => setCurrent((value) => value - 1)}
+                className="flex items-center gap-1 px-3 sm:px-4 py-2.5 rounded-xl border border-graylight/40 text-graydark text-sm disabled:opacity-30"
+              >
+                <ChevronLeft size={16} />
+                ข้อก่อนหน้า
+              </button>
+
+              {current < questions.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setCurrent((value) => value + 1)}
+                  className="flex items-center gap-1 px-4 sm:px-5 py-2.5 rounded-xl bg-navy text-white text-sm font-medium hover:opacity-90"
+                >
+                  ข้อถัดไป
+                  <ChevronRight size={16} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={submit}
+                  className="px-5 py-2.5 rounded-xl bg-accent-green text-navy text-sm font-semibold hover:opacity-90"
+                >
+                  ส่งข้อสอบ
+                </button>
+              )}
+            </div>
+          </div>
+
           {showNavigator && (
-            <div className="xl:hidden bg-white border border-graylight/25 rounded-2xl p-4 mb-4">
+            <div className="mt-5 xl:hidden bg-white border border-graylight/30 rounded-2xl p-5">
               <QuestionNavigator
                 questions={questions}
                 answers={answers}
@@ -296,64 +418,28 @@ export default function MockExamTakingPage() {
               />
             </div>
           )}
-
-          <article className="bg-white border border-graylight/25 rounded-2xl p-5 sm:p-7 no-copy" {...noCopyHandlers}>
-            <p className="text-sm font-semibold text-navy mb-6">ข้อที่ {current + 1} / {questions.length}</p>
-            <h1 className="text-lg font-medium text-graydark leading-relaxed mb-7">{question.question}</h1>
-
-            <div className="space-y-3">
-              {question.choices.map((choice, index) => {
-                const selected = answers[question.id] === index;
-                return (
-                  <button
-                    key={`${choice}-${index}`}
-                    type="button"
-                    onClick={() => setAnswers((old) => ({ ...old, [question.id]: index }))}
-                    className={`w-full flex items-center gap-3 text-left p-3.5 rounded-xl border transition-colors ${selected ? 'border-accent-cyan bg-accent-cyan/10 text-navy' : 'border-graylight/35 text-graydark hover:border-navy/40'}`}
-                  >
-                    <span className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-sm font-bold ${selected ? 'bg-accent-cyan text-white' : 'bg-navy/5 text-navy'}`}>{LETTERS[index]}</span>
-                    <span className="text-sm">{choice}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <label className="mt-6 flex items-center gap-2 text-sm text-graydark/65 cursor-pointer">
-              <input type="checkbox" checked={Boolean(flagged[question.id])} onChange={(event) => setFlagged((old) => ({ ...old, [question.id]: event.target.checked }))} className="accent-orange-400 w-4 h-4" />
-              <Flag size={15} className="text-orange-400" /> ไม่แน่ใจ ข้ามไปตอบภายหลัง
-            </label>
-          </article>
-
-          <div className="flex justify-between gap-3 mt-4">
-            <button type="button" disabled={current === 0} onClick={() => setCurrent((value) => value - 1)} className="rounded-xl border border-graylight/35 px-4 py-3 text-sm text-graydark disabled:opacity-40">‹ ข้อก่อนหน้า</button>
-            {current < questions.length - 1 ? (
-              <button type="button" onClick={() => setCurrent((value) => value + 1)} className="rounded-xl bg-navy text-white px-4 py-3 text-sm">ข้อถัดไป ›</button>
-            ) : (
-              <button type="button" onClick={submit} className="rounded-xl bg-navy text-white px-4 py-3 text-sm">ส่งข้อสอบ</button>
-            )}
-          </div>
         </section>
 
         <aside className="space-y-4 xl:sticky xl:top-5 h-fit">
-          <section className="bg-white border border-graylight/25 rounded-2xl p-5 text-center">
-            <div className="w-24 h-24 mx-auto rounded-full flex items-center justify-center" style={{ background: `conic-gradient(#2B2D42 ${progress}%, #E5E7EB 0)` }}>
-              <div className="w-[76px] h-[76px] rounded-full bg-white flex items-center justify-center text-navy font-bold">{progress}%</div>
+          <section className="border border-graylight/30 rounded-2xl p-5 bg-white flex xl:flex-col items-center gap-4 xl:gap-2">
+            <ProgressRing pct={progress} />
+            <div className="xl:text-center">
+              <p className="text-sm text-graydark/60">ทำแล้ว {answeredCount} / {questions.length} ข้อ</p>
+              {flaggedCount > 0 && <p className="text-xs text-amber-600 mt-1">ทำเครื่องหมายไม่แน่ใจ {flaggedCount} ข้อ</p>}
             </div>
-            <p className="text-sm text-graydark/60 mt-3">ทำแล้ว {answeredCount} / {questions.length} ข้อ</p>
-            {flaggedCount > 0 && <p className="text-xs text-orange-600 mt-1">ทำเครื่องหมายไว้ {flaggedCount} ข้อ</p>}
           </section>
 
-          <section className="bg-white border border-graylight/25 rounded-2xl p-5">
-            <p className="text-xs text-graydark/45 mb-3">รายละเอียดชุดข้อสอบ</p>
+          <section className="bg-white border border-graylight/30 rounded-2xl p-5">
+            <p className="text-xs text-graydark/50 mb-3">รายละเอียดชุดข้อสอบ</p>
             <dl className="space-y-3 text-sm">
-              <div><dt className="text-graydark/45 text-xs">ชุดข้อสอบ</dt><dd className="font-semibold text-navy mt-0.5">{exam.title}</dd></div>
-              <div><dt className="text-graydark/45 text-xs">จำนวนข้อ</dt><dd className="font-semibold text-navy mt-0.5">{exam.totalQuestions} ข้อ</dd></div>
-              <div><dt className="text-graydark/45 text-xs">เวลาสอบ</dt><dd className="font-semibold text-navy mt-0.5">{exam.durationMinutes} นาที</dd></div>
-              <div><dt className="text-graydark/45 text-xs">เกณฑ์ผ่าน</dt><dd className="font-semibold text-navy mt-0.5">{exam.passScore}/{exam.totalQuestions} คะแนน</dd></div>
+              <div><dt className="text-[11px] text-graydark/40">ชุดข้อสอบ</dt><dd className="font-medium text-navy">{exam.title}</dd></div>
+              <div><dt className="text-[11px] text-graydark/40">จำนวนข้อ</dt><dd className="font-medium text-navy">{exam.totalQuestions} ข้อ</dd></div>
+              <div><dt className="text-[11px] text-graydark/40">เวลาสอบ</dt><dd className="font-medium text-navy">{exam.durationMinutes} นาที</dd></div>
+              <div><dt className="text-[11px] text-graydark/40">เกณฑ์ผ่าน</dt><dd className="font-medium text-navy">{exam.passScore}/{exam.totalQuestions} คะแนน</dd></div>
             </dl>
           </section>
 
-          <section className="hidden xl:block bg-white border border-graylight/25 rounded-2xl p-4">
+          <section className="hidden xl:block bg-white border border-graylight/30 rounded-2xl p-4">
             <button type="button" onClick={pause} className="w-full flex items-center justify-center gap-2 border border-navy/25 text-navy rounded-xl py-2.5 text-sm font-medium"><PauseCircle size={16} /> หยุดพักไว้ก่อน</button>
             <button type="button" onClick={submit} className="w-full flex items-center justify-center gap-2 bg-navy text-white rounded-xl py-2.5 text-sm font-medium mt-2"><Send size={16} /> ส่งข้อสอบ</button>
           </section>
@@ -482,13 +568,14 @@ function ExamMessage({ title, message, icon: Icon = AlertCircle, actionHref = '/
 function QuestionNavigator({ questions, answers, flagged, current, onPick }) {
   return (
     <>
-      <p className="font-semibold text-navy text-sm mb-3">รายการข้อสอบ</p>
-      <div className="flex items-center gap-2.5 text-[11px] text-graydark/55 mb-4 flex-wrap">
-        <span className="inline-flex items-center gap-1"><i className="w-3 h-3 rounded bg-orange-400" />ข้อปัจจุบัน</span>
-        <span className="inline-flex items-center gap-1"><i className="w-3 h-3 rounded border border-graylight/40 bg-white" />ยังไม่ตอบ</span>
-        <span className="inline-flex items-center gap-1"><i className="w-3 h-3 rounded bg-navy" />ทำแล้ว</span>
+      <p className="font-medium text-navy mb-3">รายการข้อสอบ</p>
+      <div className="flex flex-wrap gap-x-3 gap-y-1.5 mb-4 text-[11px] text-graydark/60">
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-orange-400" />ข้อปัจจุบัน</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border border-graylight/50" />ยังไม่ทำ</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-navy" />ทำแล้ว</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-amber-400" />ไม่แน่ใจ</span>
       </div>
-      <div className="grid grid-cols-4 gap-2 max-h-[340px] overflow-y-auto pr-1">
+      <div className="grid grid-cols-6 sm:grid-cols-8 xl:grid-cols-4 gap-2 max-h-[340px] overflow-y-auto pr-1">
         {questions.map((item, index) => {
           const active = index === current;
           const answered = answers[item.id] !== undefined;

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Check, LoaderCircle, MessageSquareText, ShieldCheck } from 'lucide-react';
 
 const phoneIsValid = (value) => /^(0\d{9}|66\d{9})$/.test(String(value || '').replace(/\D/g, ''));
@@ -11,6 +11,11 @@ const emailIsValid = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 export default function AuthCard({ mode }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // ถูกเตะออกเพราะมีการล็อกอินจากอุปกรณ์อื่น — ต้องบอกเหตุผลไม่ให้ผู้ใช้คิดว่าระบบพัง
+  const reason = searchParams.get('reason');
+  const oustedByOtherDevice = reason === 'other-device';
+  const accountSuspended = reason === 'suspended';
   const isRegister = mode === 'register';
   const [step, setStep] = useState('form');
   const [phone, setPhone] = useState('');
@@ -111,7 +116,7 @@ export default function AuthCard({ mode }) {
   return (
     <div className="min-h-screen bg-[#f7f8fb]">
       <header className="border-b-[3px] border-[#d3a950] bg-[#1c2b5a] text-white shadow-sm">
-        <div className="mx-auto flex h-[80px] max-w-7xl items-center justify-between px-5 sm:h-[96px] sm:px-8">
+        <div className="mx-auto flex h-[80px] max-w-app items-center justify-between px-5 sm:h-[96px] sm:px-8">
           <Link href="/" className="flex items-center gap-3" aria-label="POLREADY หน้าแรก">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#d3a950]/70 bg-white/5 text-[#e3bd69]"><ShieldCheck size={22} /></span>
             <span className="border-l border-white/15 pl-3"><span className="block text-lg font-semibold tracking-[0.08em]">POLREADY</span><span className="block text-[10px] tracking-[0.14em] text-white/55">เตรียมสอบตำรวจ</span></span>
@@ -153,6 +158,8 @@ export default function AuthCard({ mode }) {
               <span>ฉันได้อ่านและยอมรับ <a href="#terms" className="font-semibold text-navy underline underline-offset-2">ข้อกำหนดการใช้งาน</a> และ <a href="#privacy" className="font-semibold text-navy underline underline-offset-2">นโยบายความเป็นส่วนตัว</a></span>
             </label>}
 
+            {oustedByOtherDevice && !error && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm leading-5 text-amber-800">บัญชีนี้ถูกเข้าสู่ระบบจากอุปกรณ์อื่น ระบบอนุญาตให้ใช้งานได้ทีละเครื่อง กรุณาเข้าสู่ระบบใหม่</p>}
+            {accountSuspended && !error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm leading-5 text-red-700">บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ</p>}
             {error && <p role="alert" className="rounded-xl bg-red-50 px-3.5 py-2.5 text-sm text-red-700">{error}</p>}
             <button type="submit" disabled={loading || (isRegister && !acceptedTerms)} className={`inline-flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${isRegister ? 'bg-[#d8b06b] text-navy hover:bg-[#c99f58]' : 'bg-navy text-white hover:bg-navy/90'}`}>
               {loading ? <><LoaderCircle size={17} className="animate-spin" /> กำลังส่งรหัส</> : <>{isRegister ? 'สมัครสมาชิก' : 'เข้าสู่ระบบ'} <MessageSquareText size={16} /></>}

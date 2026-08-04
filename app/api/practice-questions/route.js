@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { isFreePracticeTopic } from '@/lib/entitlements';
-import { canAccessExamSet, canUseArea, getUserAccess } from '@/lib/serverAccess';
+import { canAccessExamSet, canUseArea, getFreePracticeTopicKeys, getUserAccess } from '@/lib/serverAccess';
 import { requireCurrentUser } from '@/lib/serverUser';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { shuffle } from '@/lib/shuffle';
@@ -76,7 +75,9 @@ export async function GET(request) {
       });
     }
 
-    const canUseFreeTopics = requestedTopics.length > 0 && requestedTopics.every(isFreePracticeTopic);
+    // ชุดฟรีอ่านจาก content_topics.is_free_practice ใน DB ให้ตรงกับที่การ์ดหน้าเลือกชุดใช้ตัดสิน
+    const freeTopicKeys = await getFreePracticeTopicKeys(supabase, requestedTopics);
+    const canUseFreeTopics = requestedTopics.length > 0 && requestedTopics.every((key) => freeTopicKeys.has(key));
     const hasFullAccess = canUseArea(access, 'practice');
     if (!hasFullAccess && !canUseFreeTopics && !isRandomQuiz) {
       throw requestError('คลังข้อสอบนี้สำหรับสมาชิก กรุณาเลือกชุดทดลองฟรีหรือสมัครสมาชิก', 403);
