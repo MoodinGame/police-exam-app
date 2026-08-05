@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const runtime = 'nodejs';
 
-export const PROGRESS_RESET_KEY = 'progress_reset_at';
+const PROGRESS_RESET_KEY = 'progress_reset_at';
 
 /**
  * ล้างสถิติการทำข้อสอบของผู้ใช้ทุกคน

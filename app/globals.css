@@ -18,7 +18,7 @@
 
 body {
   @apply bg-[#F7FAFC] text-graydark font-prompt antialiased;
-  font-weight: 300;
+  font-weight: 400;
   line-height: 1.65;
   background-image:
     radial-gradient(circle at 4% 0%, rgba(79,134,247,.07), transparent 26rem),
@@ -49,6 +49,8 @@ html, body {
   overflow-x: hidden;
 }
 
+html { scroll-behavior: smooth; }
+
 .no-copy {
   user-select: none;
   -webkit-user-select: none;
@@ -69,9 +71,8 @@ html, body {
     isolation: isolate;
     overflow: hidden;
     background:
-      radial-gradient(circle at 92% 4%, rgba(79,134,247,.08), transparent 21rem),
-      radial-gradient(circle at 8% 88%, rgba(103,198,179,.09), transparent 24rem),
-      linear-gradient(180deg, #FBFDFF 0%, #F7FAFC 55%, #F6FBFA 100%);
+      radial-gradient(circle at 92% 4%, rgba(79,134,247,.055), transparent 22rem),
+      linear-gradient(180deg, #FCFDFF 0%, #F7F9FC 100%);
   }
 
   .app-main::before,
@@ -80,7 +81,7 @@ html, body {
     position: absolute;
     z-index: 0;
     border-radius: 9999px;
-    filter: blur(4px);
+    filter: blur(8px);
     pointer-events: none;
   }
 
@@ -282,6 +283,156 @@ html, body {
   box-shadow: 0 13px 25px rgba(37, 99, 235, 0.34);
 }
 
+.membership-chip {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.55rem;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid transparent;
+  border-radius: 0.82rem;
+  padding: 0.48rem 0.68rem;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.membership-chip::before {
+  content: '';
+  position: absolute;
+  inset: -55% -35%;
+  z-index: 0;
+  background: linear-gradient(105deg, transparent 39%, rgba(255,255,255,.05) 45%, rgba(255,238,183,.42) 50%, rgba(255,255,255,.08) 55%, transparent 61%);
+  transform: translateX(-78%) skewX(-18deg);
+  animation: membership-sheen 5.8s cubic-bezier(.4, 0, .2, 1) infinite;
+  pointer-events: none;
+}
+
+.membership-chip:hover { transform: translateY(-1px); }
+
+.membership-chip--vip {
+  border-color: rgba(245, 199, 106, 0.42);
+  background: linear-gradient(135deg, #253d78 0%, #1c2e5b 54%, #172856 100%);
+  box-shadow: 0 8px 20px rgba(5, 15, 46, .28), inset 0 1px 0 rgba(255,255,255,.1);
+}
+
+.membership-chip--standard {
+  border-color: rgba(152, 182, 251, 0.34);
+  background: linear-gradient(135deg, #244b9d 0%, #1b376f 100%);
+  box-shadow: 0 8px 18px rgba(8, 27, 72, .22), inset 0 1px 0 rgba(255,255,255,.1);
+}
+
+.membership-chip--compact {
+  max-width: 8.7rem;
+  border-radius: 0.72rem;
+  padding: 0.42rem 0.52rem;
+}
+
+.membership-chip__halo {
+  position: absolute;
+  z-index: 0;
+  top: -1.4rem;
+  right: -0.9rem;
+  width: 3.6rem;
+  height: 3.6rem;
+  border-radius: 999px;
+  background: rgba(245, 199, 106, .16);
+  filter: blur(3px);
+  animation: membership-halo 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.membership-chip__icon {
+  position: relative;
+  z-index: 10;
+  display: inline-flex;
+  width: 1.7rem;
+  height: 1.7rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.58rem;
+  background: rgba(245, 199, 106, .17);
+  color: #f9d989;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+}
+
+.membership-chip--standard .membership-chip__icon {
+  background: rgba(152, 182, 251, .2);
+  color: #dce9ff;
+}
+
+.membership-chip__spark {
+  position: absolute;
+  z-index: 10;
+  top: 0.35rem;
+  right: 0.34rem;
+  color: #ffe7a6;
+  animation: membership-spark 2.7s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.membership-menu-head {
+  background:
+    radial-gradient(circle at 92% 12%, rgba(245,199,106,.22), transparent 37%),
+    linear-gradient(135deg, #fffbf0, #f5f8ff);
+}
+
+.membership-tier-badge {
+  position: relative;
+  display: inline-flex;
+  min-width: 1.85rem;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 0.48rem;
+  background: #4f86f7;
+  padding: 0.27rem 0.38rem;
+  color: #172856;
+  font-size: 0.64rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 3px 8px rgba(79, 134, 247, .26);
+}
+
+.membership-tier-badge::after {
+  content: '';
+  position: absolute;
+  inset: -80% -45%;
+  background: linear-gradient(108deg, transparent 43%, rgba(255,255,255,.62) 50%, transparent 57%);
+  transform: translateX(-90%) skewX(-18deg);
+  animation: membership-tier-sheen 4.8s ease-in-out infinite;
+}
+
+.membership-tier-badge--vip {
+  border: 1px solid rgba(245, 199, 106, .62);
+  background: linear-gradient(135deg, #5a8df6, #356ddc);
+  color: #fff4d8;
+  box-shadow: 0 3px 10px rgba(79, 134, 247, .34), 0 0 0 2px rgba(245, 199, 106, .08);
+}
+
+@keyframes membership-tier-sheen {
+  0%, 55% { transform: translateX(-90%) skewX(-18deg); opacity: 0; }
+  62% { opacity: 1; }
+  78%, 100% { transform: translateX(88%) skewX(-18deg); opacity: 0; }
+}
+
+@keyframes membership-sheen {
+  0%, 55% { transform: translateX(-78%) skewX(-18deg); opacity: 0; }
+  61% { opacity: 1; }
+  76%, 100% { transform: translateX(88%) skewX(-18deg); opacity: 0; }
+}
+
+@keyframes membership-halo {
+  0%, 100% { transform: scale(.88); opacity: .45; }
+  50% { transform: scale(1.12); opacity: .9; }
+}
+
+@keyframes membership-spark {
+  0%, 100% { transform: scale(.74) rotate(0deg); opacity: .42; }
+  48% { transform: scale(1.14) rotate(22deg); opacity: 1; }
+}
+
 @keyframes enter {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -290,6 +441,36 @@ html, body {
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-5px); }
+}
+
+.mock-exam-card {
+  animation: mock-exam-reveal 480ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+.mock-exam-modal-card::before {
+  position: absolute;
+  top: 0;
+  right: 12%;
+  left: 12%;
+  height: 3px;
+  content: '';
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #70cfed, transparent);
+}
+
+@keyframes mock-exam-reveal {
+  from { opacity: 0; transform: translateY(12px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.admin-score-bar {
+  transform-origin: left center;
+  animation: admin-score-bar-reveal 720ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+@keyframes admin-score-bar-reveal {
+  from { opacity: .35; transform: scaleX(.08); }
+  to { opacity: 1; transform: scaleX(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {

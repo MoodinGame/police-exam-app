@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { apiErrorResponse, requireCurrentUser } from '@/lib/serverUser';
-import { getPublicFallbackPlans } from '@/lib/membership';
 import { getPublicPlans, getUserAccess, membershipForResponse } from '@/lib/serverAccess';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
@@ -42,7 +41,9 @@ export async function GET() {
       isMember: access.isMember,
       // เวลาที่แอดมินสั่งล้างสถิติล่าสุด — ฝั่ง client ใช้เทียบเพื่อล้าง localStorage ของตัวเอง
       progressResetAt: resetResult.data?.value?.resetAt || null,
-      plans: plans || getPublicFallbackPlans(),
+      // Never advertise fallback paid plans when the database is unavailable.
+      // Payment submission validates the database record again on the server.
+      plans: plans || [],
       paymentAccount: normalizeAccount(accountResult.data?.value),
     });
   } catch (error) {

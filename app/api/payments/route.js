@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { apiErrorResponse, requireCurrentUser } from '@/lib/serverUser';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getMembershipPlan } from '@/lib/serverAccess';
+import { sendPendingPaymentNotification } from '@/lib/lineAdminNotifications';
 
 export const runtime = 'nodejs';
 
@@ -89,6 +90,17 @@ export async function POST(request) {
       storagePath = null;
       if (insertError.code === '23505') throw requestError('มีสลิปที่รอตรวจสอบอยู่แล้ว', 409);
       throw insertError;
+    }
+
+    // A failed LINE delivery must never block the customer's payment submission.
+    try {
+      await sendPendingPaymentNotification({
+        planName: plan.name,
+        amount: plan.price,
+        createdAt: slip.created_at,
+      });
+    } catch (notificationError) {
+      console.error('[payments] Unable to notify LINE administrators', notificationError);
     }
 
     return NextResponse.json({ slip }, { status: 201 });

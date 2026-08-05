@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="344" height="80" viewBox="0 0 344 80" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">POLREADY logo for dark backgrounds</title>
+  <desc id="desc">POLREADY police exam preparation logo</desc>
+  <path d="M40 4L70.5 16.3V38.6C70.5 57.5 57.9 73.2 40 79.6C22.1 73.2 9.5 57.5 9.5 38.6V16.3L40 4Z" fill="#FFFFFF"/>
+  <path d="M40 11.7L63.2 21.1V39C63.2 53.8 53.6 66.4 40 71.8C26.4 66.4 16.8 53.8 16.8 39V21.1L40 11.7Z" stroke="#D3A950" stroke-opacity=".36" stroke-width="2.3"/>
+  <rect x="25.5" y="45.2" width="7.9" height="14" rx="3.95" fill="#D3A950"/>
+  <rect x="36.05" y="36.65" width="7.9" height="22.55" rx="3.95" fill="#D3A950"/>
+  <rect x="46.6" y="27.15" width="7.9" height="32.05" rx="3.95" fill="#D3A950"/>
+  <text x="90" y="36" fill="#FFFFFF" font-family="Arial, Noto Sans Thai, sans-serif" font-size="29" font-weight="700" letter-spacing="2.2">POL</text>
+  <text x="152" y="36" fill="#D3A950" font-family="Arial, Noto Sans Thai, sans-serif" font-size="29" font-weight="700" letter-spacing="2.2">READY</text>
+  <text x="91" y="59" fill="#FFFFFF" fill-opacity=".58" font-family="Arial, Noto Sans Thai, sans-serif" font-size="13" font-weight="500" letter-spacing="1.5">เตรียมสอบตำรวจ</text>
+</svg>

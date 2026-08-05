@@ -22,12 +22,13 @@ import {
   Timer,
   TrendingUp,
 } from 'lucide-react';
-import { formatCurrency, getPublicFallbackPlans } from '@/lib/membership';
+import { formatCurrency } from '@/lib/membership';
 import { getPublicPlans } from '@/lib/serverAccess';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import Reveal from '@/components/Reveal';
 import OnlineStatusBadge from '@/components/OnlineStatusBadge';
 import { BrandLogo, BrandMark } from '@/components/BrandLogo';
+import StudyIntelligencePreview from '@/components/landing/StudyIntelligencePreview';
 
 const trustPoints = [
   { icon: Target, title: 'เห็นจุดที่ควรฝึก', text: 'ดูความแม่นยำแยกตามวิชา' },
@@ -56,16 +57,19 @@ const tools = [
   { icon: Library, title: 'คลังความรู้', text: 'อ่านสรุปเจาะลึกแต่ละหัวข้อ พร้อมจุดที่ออกสอบบ่อย ก่อนลงมือทำโจทย์จริง' },
 ];
 
-// แพ็กเกจจริงมาจากตาราง membership_plans (จัดการผ่านแอดมิน) ถ้าต่อฐานข้อมูลไม่ได้ค่อย fallback ไปใช้ค่าเริ่มต้นใน lib/membership.js
+// ราคาและสิทธิ์แพ็กเกจต้องมาจากฐานข้อมูลเท่านั้น เพื่อไม่ให้แสดงข้อมูลที่ล้าสมัย
+// หรือเปิดรับชำระเงินจากแผนที่ผู้ดูแลปิดไปแล้ว
 async function getMembershipPlans() {
   try {
     const supabase = getSupabaseAdmin();
     const plans = await getPublicPlans(supabase);
-    return plans && plans.length ? plans : getPublicFallbackPlans();
+    return plans || [];
   } catch {
-    return getPublicFallbackPlans();
+    return [];
   }
 }
+
+export const dynamic = 'force-dynamic';
 
 function planPriceSuffix(plan) {
   if (!plan.price) return '';
@@ -111,9 +115,7 @@ export default async function HomePage() {
             <p className="mt-4 text-xs text-slate-400">ไม่ต้องสมัครผ่าน Google · ใช้เบอร์โทรศัพท์ของคุณเพื่อเข้าสู่ระบบ</p>
           </div>
           <Reveal delay={200}>
-            <div className="animate-float">
-              <HeroPanel />
-            </div>
+            <StudyIntelligencePreview />
           </Reveal>
         </div>
       </section>
@@ -141,7 +143,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="bg-white px-5 py-20 sm:px-8 sm:py-24">
+      <section id="how-it-works" className="bg-white px-5 py-20 sm:px-8 sm:py-24">
         <div className="mx-auto grid max-w-app gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
           <Reveal><p className="text-sm font-medium text-[#245cff]">HOW POLREADY HELPS</p><h2 className="mt-2 text-3xl font-semibold leading-tight text-[#172856] sm:text-4xl">เปลี่ยนการอ่านแบบเดิม<br />ให้เป็นการฝึกที่วัดผลได้</h2><p className="mt-5 max-w-md leading-7 text-slate-500">เห็นภาพรวมของตัวเอง แล้วค่อยเลือกแบบฝึกที่เหมาะสม ไม่จำเป็นต้องเดาทิศทางการอ่านเพียงลำพัง</p><div className="mt-7 space-y-4">{['เลือกวิชาและหัวข้อย่อยได้ตามลำดับที่ต้องการ', 'เก็บผลการฝึกและกลับมาทบทวนได้ทุกเมื่อ', 'ใช้ได้ทั้งมือถือ แท็บเล็ต และคอมพิวเตอร์'].map((item) => <p key={item} className="flex items-start gap-2.5 text-sm text-[#172856]"><CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-500" /> {item}</p>)}</div></Reveal>
           <Reveal delay={150}><LearningFlow /></Reveal>
@@ -158,9 +160,13 @@ export default async function HomePage() {
       <section id="membership" className="bg-[#f7f9fc] px-5 py-20 sm:px-8 sm:py-24">
         <div className="mx-auto max-w-app">
           <Reveal><SectionHeading eyebrow="MEMBERSHIP" title="เลือกแพ็กเกจที่ใช่สำหรับคุณ" text="สมัครเพื่อปลดล็อกพื้นที่ฝึกและติดตามความก้าวหน้าของคุณ" /></Reveal>
-          <div className="mx-auto mt-10 grid max-w-5xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {plans.map((plan, index) => <Reveal key={plan.id} delay={index * 100}><PlanCard plan={plan} /></Reveal>)}
-          </div>
+          {plans.length > 0 ? (
+            <div className="mx-auto mt-10 grid max-w-5xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {plans.map((plan, index) => <Reveal key={plan.id} delay={index * 100}><PlanCard plan={plan} /></Reveal>)}
+            </div>
+          ) : (
+            <div className="mx-auto mt-10 max-w-xl rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center shadow-sm"><p className="font-semibold text-[#172856]">กำลังอัปเดตรายละเอียดแพ็กเกจ</p><p className="mt-2 text-sm leading-6 text-slate-500">ยังไม่สามารถแสดงราคาได้ในขณะนี้ กรุณาลองใหม่อีกครั้งภายหลัง</p></div>
+          )}
         </div>
       </section>
 
@@ -172,7 +178,7 @@ export default async function HomePage() {
 }
 
 function Header() {
-  return <header className="border-b-[3px] border-[#d3a950] bg-[#1c2b5a] text-white"><div className="mx-auto flex h-[76px] max-w-app items-center justify-between px-5 sm:px-8"><Link href="/" aria-label="POLREADY หน้าแรก"><BrandLogo tone="dark" /></Link><Link href="/register" className="rounded-xl bg-[#d3a950] px-4 py-2.5 text-sm font-semibold text-[#172856] shadow-lg shadow-black/10 transition hover:bg-[#e3bd69]">ทดลองใช้ทำข้อสอบ</Link></div></header>;
+  return <header className="sticky top-0 z-40 border-b-[3px] border-[#d3a950] bg-[#1c2b5a]/95 text-white shadow-[0_4px_18px_rgba(18,35,75,0.08)] backdrop-blur-xl"><div className="mx-auto flex h-[76px] max-w-app items-center justify-between gap-5 px-5 sm:px-8"><Link href="/" aria-label="POLREADY หน้าแรก" className="shrink-0"><BrandLogo tone="dark" /></Link><nav aria-label="เมนูหน้าแรก" className="hidden items-center gap-1 lg:flex"><a href="#how-it-works" className="rounded-lg px-3 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white">วิธีใช้งาน</a><a href="#membership" className="rounded-lg px-3 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white">แพ็กเกจสมาชิก</a><Link href="/login" className="rounded-lg px-3 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white">เข้าสู่ระบบ</Link></nav><Link href="/register" className="shrink-0 rounded-xl bg-[#d3a950] px-4 py-2.5 text-sm font-semibold text-[#172856] shadow-lg shadow-black/10 transition hover:-translate-y-px hover:bg-[#e3bd69]">ทดลองใช้ทำข้อสอบ</Link></div></header>;
 }
 
 function HeroPanel() {

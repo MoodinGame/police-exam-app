@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640" fill="none" role="img" aria-labelledby="title">
+  <title id="title">POLREADY LINE profile image</title>
+  <rect width="640" height="640" rx="144" fill="#1C2B5A"/>
+  <circle cx="320" cy="320" r="238" fill="#243A70"/>
+  <circle cx="320" cy="320" r="204" stroke="#FFFFFF" stroke-opacity=".08" stroke-width="2"/>
+  <path d="M320 116L478 179.8V294.6C478 392.5 412.7 474 320 507.2C227.3 474 162 392.5 162 294.6V179.8L320 116Z" fill="#FFFFFF"/>
+  <path d="M320 154.8L443.6 204.7V296.8C443.6 372.5 394.5 437.2 320 467.2C245.5 437.2 196.4 372.5 196.4 296.8V204.7L320 154.8Z" stroke="#D3A950" stroke-opacity=".42" stroke-width="9"/>
+  <rect x="245" y="337" width="42" height="75" rx="21" fill="#D3A950"/>
+  <rect x="299" y="291" width="42" height="121" rx="21" fill="#D3A950"/>
+  <rect x="353" y="239" width="42" height="173" rx="21" fill="#D3A950"/>
+</svg>

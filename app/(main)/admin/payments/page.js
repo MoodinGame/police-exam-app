@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, CircleAlert, Clock3, FileImage, LoaderCircle, LogIn, QrCode, Save, ShieldCheck, Trash2, XCircle } from 'lucide-react';
+import { BellRing, CheckCircle2, CircleAlert, Clock3, FileImage, LoaderCircle, LogIn, QrCode, Save, ShieldCheck, Trash2, XCircle } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/membership';
 
 const MAX_QR_SIZE = 2 * 1024 * 1024;
@@ -26,6 +26,7 @@ export default function AdminPaymentsPage() {
   const [savingAccount, setSavingAccount] = useState(false);
   const [uploadingQr, setUploadingQr] = useState(false);
   const [reviewingId, setReviewingId] = useState(null);
+  const [testingNotification, setTestingNotification] = useState(false);
   const [error, setError] = useState('');
   const [accessError, setAccessError] = useState('');
   const [notice, setNotice] = useState('');
@@ -73,6 +74,22 @@ export default function AdminPaymentsPage() {
       setError(reviewError.message || 'ไม่สามารถบันทึกผลตรวจสอบได้');
     } finally {
       setReviewingId(null);
+    }
+  };
+
+  const testNotification = async () => {
+    setTestingNotification(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch('/api/admin/notifications/test', { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'ไม่สามารถทดสอบการแจ้งเตือนได้');
+      setNotice(`ส่งข้อความทดสอบไปยังแอดมิน ${result.delivered} คนแล้ว`);
+    } catch (notificationError) {
+      setError(notificationError.message || 'ไม่สามารถทดสอบการแจ้งเตือนได้');
+    } finally {
+      setTestingNotification(false);
     }
   };
 
@@ -146,6 +163,10 @@ export default function AdminPaymentsPage() {
       <header className="flex items-start justify-between gap-4 flex-wrap mb-8">
         <div><p className="text-sm text-accent-cyan font-medium mb-1">ADMIN · SUPABASE</p><h1 className="text-2xl sm:text-3xl font-semibold text-navy">ตรวจสอบสลิปสมาชิก</h1><p className="text-graydark/60 mt-1">ข้อมูลสลิปและสิทธิ์สมาชิกจัดเก็บในฐานข้อมูลกลาง</p></div>
         <div className="rounded-xl bg-navy text-white px-4 py-3 flex items-center gap-2 text-sm"><ShieldCheck size={18} className="text-accent-cyan" /> ผู้ดูแลระบบ</div>
+        <button type="button" onClick={testNotification} disabled={testingNotification} className="inline-flex items-center gap-2 rounded-xl border border-accent-cyan/30 bg-white px-4 py-3 text-sm font-medium text-navy transition hover:border-accent-cyan hover:bg-accent-cyan/5 disabled:cursor-not-allowed disabled:opacity-60">
+          {testingNotification ? <LoaderCircle size={17} className="animate-spin" /> : <BellRing size={17} className="text-accent-cyan" />}
+          ทดสอบแจ้งเตือน LINE
+        </button>
       </header>
 
       {error && <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}

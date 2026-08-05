@@ -26,6 +26,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { BrandMark } from '@/components/BrandLogo';
+import { useMembershipStatus } from '@/lib/useMembershipStatus';
 
 const baseNavSections = [
   {
@@ -71,6 +72,16 @@ function Logo() {
   );
 }
 
+function getMembershipTier(membership, loading) {
+  const active = membership?.isActive === true || membership?.status === 'active';
+  const planName = String(membership?.plan?.name || '').trim();
+  const isVip = active && (/vip/i.test(membership?.plan?.id || '') || /vip/i.test(planName));
+
+  if (loading) return { label: '…', isVip: false };
+  if (!active) return { label: 'ฟรี', isVip: false };
+  return { label: isVip ? 'VIP' : planName || 'สมาชิก', isVip };
+}
+
 function SidebarBrand({ showQuickStart = false }) {
   return (
     <div className="relative overflow-hidden border-b border-white/10 px-5 py-5">
@@ -79,7 +90,7 @@ function SidebarBrand({ showQuickStart = false }) {
         <BrandMark size={40} className="shrink-0 text-white" />
         <div className="min-w-0"><Logo /><p className="mt-0.5 text-[9px] font-semibold tracking-[0.19em] text-white/45">EXAM PREPARATION</p></div>
       </div>
-      {showQuickStart && <Link href="/practice" className="relative mt-5 flex items-center justify-between rounded-2xl border border-accent-gold/25 bg-gradient-to-r from-accent-gold/20 to-white/5 px-3.5 py-3 text-sm font-semibold text-white transition hover:border-accent-gold/45 hover:bg-accent-gold/25"><span className="flex items-center gap-2"><Sparkles size={16} className="text-accent-gold" />เริ่มฝึกวันนี้</span><Zap size={17} className="text-accent-gold" /></Link>}
+      {showQuickStart && <Link href="/practice" className="relative mt-5 flex items-center justify-between rounded-2xl border border-accent-gold/25 bg-white/5 px-3.5 py-3 text-sm font-semibold text-white transition hover:border-accent-gold/45 hover:bg-accent-gold/15"><span className="flex items-center gap-2"><Sparkles size={16} className="text-accent-gold" />เริ่มฝึกวันนี้</span><Zap size={17} className="text-accent-gold" /></Link>}
     </div>
   );
 }
@@ -110,12 +121,12 @@ function NavLinks({ pathname, onNavigate, isAdmin }) {
                   onClick={onNavigate}
                   className={`group relative flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition duration-200 ${
                     active
-                      ? 'bg-gradient-to-r from-white/16 via-white/10 to-accent-cyan/15 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08),0_8px_18px_rgba(8,16,48,0.15)]'
+                      ? 'bg-white/10 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.09)]'
                       : 'text-graylight/85 hover:bg-white/7 hover:text-white'
                   }`}
                 >
                   {active && <span className="absolute left-0 h-6 w-1 rounded-r-full bg-accent-cyan shadow-[0_0_14px_rgba(79,134,247,0.8)]" />}
-                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition ${active ? 'bg-accent-cyan text-navy shadow-[0_5px_12px_rgba(79,134,247,0.24)]' : 'bg-white/6 text-white/65 group-hover:bg-white/12 group-hover:text-accent-cyan'}`}><Icon size={16} strokeWidth={active ? 2.5 : 2} /></span>
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition ${active ? 'bg-[#dfeaff] text-[#245cff] shadow-[0_5px_12px_rgba(79,134,247,0.18)]' : 'bg-white/6 text-white/65 group-hover:bg-white/12 group-hover:text-accent-cyan'}`}><Icon size={16} strokeWidth={active ? 2.5 : 2} /></span>
                   <span className="min-w-0 flex-1 truncate">{label}</span>
                   {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-cyan" />}
                 </Link>
@@ -161,7 +172,7 @@ function SidebarFooter({ onNavigate }) {
   );
 }
 
-function MobileAccountMenu({ username, open, onToggle, onClose, isAdmin }) {
+function MobileAccountMenu({ username, membership, membershipLoading, open, onToggle, onClose, isAdmin }) {
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState('');
@@ -182,10 +193,12 @@ function MobileAccountMenu({ username, open, onToggle, onClose, isAdmin }) {
     }
   };
 
+  const membershipTier = getMembershipTier(membership, membershipLoading);
+
   return (
     <div className="relative">
       <button type="button" onClick={onToggle} aria-label="เปิดเมนูบัญชี" aria-expanded={open} aria-controls="mobile-account-menu" className="inline-flex max-w-[12.5rem] items-center gap-2 rounded-2xl border border-white/15 bg-[#0d1734]/75 px-2.5 py-2 text-sm font-semibold text-accent-gold shadow-inner shadow-black/10 outline-none transition hover:border-white/25 hover:bg-[#101d40] focus-visible:ring-2 focus-visible:ring-accent-cyan/70">
-        <span className="rounded-lg bg-accent-cyan px-1.5 py-0.5 text-[10px] font-bold text-navy">บัญชี</span>
+        <span className={`membership-tier-badge ${membershipTier.isVip ? 'membership-tier-badge--vip' : ''}`}>{membershipTier.label}</span>
         <span className="truncate">{username}</span>
         <ChevronDown size={17} className={`shrink-0 text-white/70 transition ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -238,6 +251,7 @@ export default function Sidebar() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [username, setUsername] = useState('บัญชีของฉัน');
   const [isAdmin, setIsAdmin] = useState(false);
+  const { membership, loading: membershipLoading } = useMembershipStatus();
 
   useEffect(() => {
     let active = true;
@@ -288,9 +302,9 @@ export default function Sidebar() {
   return (
     <>
       {/* แถบบนสำหรับจอเล็ก/แท็บเล็ต */}
-      <header className="lg:hidden fixed inset-x-0 top-0 z-40 flex h-20 items-center justify-between border-b-[3px] border-accent-gold bg-[radial-gradient(circle_at_85%_0%,rgba(79,134,247,0.18),transparent_33%),linear-gradient(120deg,#202b52,#121b3b)] px-5 text-white shadow-[0_8px_20px_rgba(30,64,100,0.2)] sm:px-6">
+      <header className="lg:hidden fixed inset-x-0 top-0 z-40 flex h-20 items-center justify-between border-b-[3px] border-accent-gold bg-[#18284f]/95 px-5 text-white shadow-[0_8px_20px_rgba(30,64,100,0.2)] backdrop-blur-xl sm:px-6">
         <Logo />
-        <MobileAccountMenu username={username} open={profileOpen} onToggle={() => { setOpen(false); setProfileOpen((current) => !current); }} onClose={() => setProfileOpen(false)} isAdmin={isAdmin} />
+        <MobileAccountMenu username={username} membership={membership} membershipLoading={membershipLoading} open={profileOpen} onToggle={() => { setOpen(false); setProfileOpen((current) => !current); }} onClose={() => setProfileOpen(false)} isAdmin={isAdmin} />
       </header>
 
       {profileOpen && <button type="button" aria-label="ปิดเมนูบัญชี" onClick={() => setProfileOpen(false)} className="lg:hidden fixed inset-0 z-30 cursor-default" />}
@@ -309,7 +323,7 @@ export default function Sidebar() {
         // ใช้ inline transform แทนคลาส translate-x ของ Tailwind
         // เพราะคลาสพวกนั้นทำงานผ่าน CSS variable แล้วชนกับ transition จนค่าไม่อัปเดต
         style={{ transform: open ? 'translateX(0)' : 'translateX(-100%)' }}
-        className="lg:hidden fixed inset-y-0 left-0 z-[60] w-72 max-w-[85vw] bg-[radial-gradient(circle_at_100%_0%,rgba(79,134,247,0.18),transparent_30%),linear-gradient(160deg,#2B2D42,#202238)] text-white flex flex-col transition-transform duration-200 shadow-2xl"
+        className="lg:hidden fixed inset-y-0 left-0 z-[60] w-72 max-w-[85vw] bg-[#18284f] text-white flex flex-col transition-transform duration-200 shadow-2xl"
       >
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
           <div className="flex items-center gap-3"><BrandMark size={36} className="shrink-0 text-white" /><div><Logo /><p className="mt-0.5 text-[9px] font-semibold tracking-[0.16em] text-white/45">MAIN MENU</p></div></div>
@@ -327,7 +341,7 @@ export default function Sidebar() {
       </aside>
 
       {/* เมนูถาวร (จอใหญ่) */}
-      <aside className="hidden min-h-screen w-64 shrink-0 flex-col bg-[radial-gradient(circle_at_100%_0%,rgba(79,134,247,0.18),transparent_30%),radial-gradient(circle_at_0%_100%,rgba(216,176,107,0.1),transparent_26%),linear-gradient(160deg,#2B2D42,#202238)] text-white shadow-[8px_0_28px_rgba(30,64,100,0.08)] lg:flex">
+      <aside className="hidden min-h-screen w-64 shrink-0 flex-col border-r border-white/5 bg-[#18284f] text-white shadow-[8px_0_28px_rgba(30,64,100,0.08)] lg:flex">
         <SidebarBrand showQuickStart />
         <NavLinks pathname={pathname} isAdmin={isAdmin} />
         <SidebarFooter />

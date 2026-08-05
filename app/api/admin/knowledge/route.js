@@ -23,9 +23,54 @@ function cleanKeyPoints(value) {
     .slice(0, 20);
 }
 
+function cleanTechniqueRows(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => ({
+      title: cleanText(item?.title, 160),
+      detail: cleanText(item?.detail, 1200),
+    }))
+    .filter((item) => item.title && item.detail)
+    .slice(0, 12);
+}
+
+function cleanFormulaCards(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => ({
+      label: cleanText(item?.label, 120),
+      formula: cleanText(item?.formula, 400),
+      note: cleanText(item?.note, 800),
+    }))
+    .filter((item) => item.label && item.formula)
+    .slice(0, 12);
+}
+
 function integer(value) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function readArticles(supabase) {
+  let result = await supabase
+    .from('knowledge_articles')
+    .select('id, subject_id, topic_id, title, summary, body, key_points, techniques, formula_cards, pitfalls, exam_guide, is_published, sort_order, created_at, updated_at')
+    .order('is_published', { ascending: false })
+    .order('sort_order', { ascending: true })
+    .order('updated_at', { ascending: false });
+
+  // Keep the CMS usable while the additive lesson-block migration is waiting
+  // to be applied in Supabase.
+  if (result.error?.code === 'PGRST204' || result.error?.code === '42703') {
+    result = await supabase
+      .from('knowledge_articles')
+      .select('id, subject_id, topic_id, title, summary, body, key_points, pitfalls, exam_guide, is_published, sort_order, created_at, updated_at')
+      .order('is_published', { ascending: false })
+      .order('sort_order', { ascending: true })
+      .order('updated_at', { ascending: false });
+    if (!result.error) result.data = (result.data || []).map((article) => ({ ...article, techniques: [], formula_cards: [] }));
+  }
+  return result;
 }
 
 async function readCatalog(supabase) {
@@ -40,12 +85,7 @@ async function readCatalog(supabase) {
       .select('id, legacy_id, subject_id, name, description, sort_order, is_active')
       .order('sort_order', { ascending: true })
       .order('name', { ascending: true }),
-    supabase
-      .from('knowledge_articles')
-      .select('id, subject_id, topic_id, title, summary, body, key_points, pitfalls, exam_guide, is_published, sort_order, created_at, updated_at')
-      .order('is_published', { ascending: false })
-      .order('sort_order', { ascending: true })
-      .order('updated_at', { ascending: false }),
+    readArticles(supabase),
   ]);
 
   const firstError = subjectsResult.error || topicsResult.error || articlesResult.error;
@@ -114,6 +154,8 @@ async function articlePayload(payload, supabase) {
     summary,
     body,
     key_points: cleanKeyPoints(payload?.keyPoints),
+    techniques: cleanTechniqueRows(payload?.techniques),
+    formula_cards: cleanFormulaCards(payload?.formulaCards),
     pitfalls: cleanText(payload?.pitfalls, 2000),
     exam_guide: cleanText(payload?.examGuide, 2000),
     is_published: Boolean(payload?.isPublished),

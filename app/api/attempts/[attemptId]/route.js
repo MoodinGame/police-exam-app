@@ -21,7 +21,7 @@ function mapQuestion(question) {
 export async function GET(_request, { params }) {
   try {
     const user = await requireCurrentUser();
-    const attemptId = params.attemptId;
+    const { attemptId } = await params;
     if (!attemptId) return NextResponse.json({ error: 'ไม่พบรายการผลสอบ' }, { status: 400 });
 
     const supabase = getSupabaseAdmin();

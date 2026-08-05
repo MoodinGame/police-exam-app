@@ -26,7 +26,7 @@ export async function POST(request) {
     return NextResponse.json({ error: 'รูปแบบคำขอไม่ถูกต้อง' }, { status: 400 });
   }
 
-  const store = cookies();
+  const store = await cookies();
   const challenge = parseChallenge(store.get(OTP_CHALLENGE_COOKIE)?.value);
   if (!challenge || isChallengeExpired(challenge)) {
     store.delete(OTP_CHALLENGE_COOKIE);

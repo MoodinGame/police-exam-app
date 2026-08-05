@@ -6,6 +6,7 @@ export const runtime = 'nodejs';
 
 export async function PATCH(request, { params }) {
   try {
+    const { id: paymentSlipId } = await params;
     const admin = await requireAdmin();
     const body = await request.json();
     const action = body?.action;
@@ -26,7 +27,7 @@ export async function PATCH(request, { params }) {
         reviewed_at: new Date().toISOString(),
         reviewed_by: admin.id,
       })
-      .eq('id', params.id)
+      .eq('id', paymentSlipId)
       .eq('status', 'pending')
       .select('id, status')
       .maybeSingle();

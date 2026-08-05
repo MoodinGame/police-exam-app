@@ -70,8 +70,8 @@ function CountdownBox({ days, hours, minutes, seconds, reached, loading }) {
     { v: seconds, l: 'วิ' },
   ];
   return (
-    <div className="app-card px-4 py-3 text-right shadow-[0_12px_26px_rgba(30,64,100,0.08)]">
-      <p className="text-xs text-graydark/50">สอบข้อเขียน 29 พ.ย. 2569</p>
+    <div className="dashboard-countdown rounded-2xl border border-slate-200/90 bg-white/85 px-4 py-3 text-right shadow-[0_10px_24px_rgba(30,64,100,0.06)] backdrop-blur-sm">
+      <p className="text-[11px] font-semibold tracking-[0.08em] text-graydark/50">สอบข้อเขียน · 29 พ.ย. 2569</p>
       {reached ? (
         <p className="text-2xl font-bold text-accent-cyan">ถึงวันสอบแล้ว</p>
       ) : (
@@ -331,17 +331,23 @@ function TodayStudyPlan({ data, findSubject }) {
 
   const addSubjectPlan = (subject, index, wrong = 0) => {
     if (!subject || plannedSubjects.has(subject.id) || items.length >= 4) return;
+    const questionCount = Number(subject.count);
+    // Catalog อาจกำลังรีเฟรชหรือข้อมูลเก่ายังไม่มี count จึงห้ามปล่อยให้ NaN หลุดถึง UI
+    const availableQuestions = Number.isFinite(questionCount) ? Math.max(0, Math.trunc(questionCount)) : 10;
+    const wrongCount = Number(wrong);
+    const reviewCount = Number.isFinite(wrongCount) ? Math.max(0, Math.trunc(wrongCount)) : 0;
+    if (!reviewCount && availableQuestions === 0) return;
     plannedSubjects.add(subject.id);
-    const target = wrong ? Math.min(12, wrong) : Math.min(10, subject.count);
+    const target = reviewCount ? Math.min(12, reviewCount) : Math.min(10, availableQuestions);
     items.push({
       id: subject.id,
-      title: wrong ? `ทบทวนข้อที่เคยผิด ${target} ข้อ` : `${subject.name} ${target} ข้อ`,
-      subtitle: wrong ? subject.name : `ฝึกเสริมความแม่นยำในรายวิชา`,
+      title: reviewCount ? `ทบทวนข้อที่เคยผิด ${target} ข้อ` : `${subject.name} ${target} ข้อ`,
+      subtitle: reviewCount ? subject.name : `ฝึกเสริมความแม่นยำในรายวิชา`,
       target,
-      minutes: wrong ? Math.max(8, target) : 8,
+      minutes: reviewCount ? Math.max(8, target) : 8,
       href: `/practice/${subject.id}`,
       color: colorStyles[index % colorStyles.length],
-      icon: wrong ? RotateCcw : subject.id === 'english' ? Languages : BookOpenCheck,
+      icon: reviewCount ? RotateCcw : subject.id === 'english' ? Languages : BookOpenCheck,
     });
   };
 
@@ -356,25 +362,29 @@ function TodayStudyPlan({ data, findSubject }) {
     findSubject('it'),
   ].forEach((subject) => addSubjectPlan(subject, items.length));
 
+  const totalMinutes = items.reduce((sum, item) => sum + item.minutes, 0);
+  const startHref = items[0]?.href || '/practice';
+
   return (
-    <section className="app-card p-5 sm:p-6">
+    <section className="app-card dashboard-motion-card dashboard-motion-delay-2 p-5 sm:p-6">
       <div className="flex items-start justify-between gap-4">
-        <div><div className="flex items-center gap-2"><CalendarClock size={18} className="text-navy" /><h2 className="font-bold text-navy">แผนการเรียนวันนี้</h2></div><p className="mt-1 text-xs text-graydark/45">ปรับตามผลการฝึกและจุดที่ควรทบทวน</p></div>
-        <Link href="/practice" className="shrink-0 text-sm font-semibold text-accent-cyan hover:underline">ดูทั้งหมด <ArrowRight className="inline" size={14} /></Link>
+        <div><p className="dashboard-eyebrow">TODAY'S PLAN</p><div className="mt-1 flex items-center gap-2"><CalendarClock size={18} className="text-navy" /><h2 className="font-bold text-navy">แผนการเรียนวันนี้</h2></div><p className="mt-1 text-xs text-graydark/50">ปรับตามผลการฝึกและจุดที่ควรทบทวน</p></div>
+        <Link href="/practice" className="hidden shrink-0 text-sm font-semibold text-accent-cyan hover:underline sm:inline">ดูทั้งหมด <ArrowRight className="inline" size={14} /></Link>
       </div>
-      <div className="mt-4 space-y-1">
-        {items.map((item) => {
+      <div className="mt-4 flex items-center gap-2 border-y border-slate-100 py-2.5 text-[11px] font-medium text-graydark/50"><span className="inline-flex items-center gap-1.5 rounded-full bg-[#edf3ff] px-2.5 py-1 text-[#245cff]"><ListChecks size={13} /> {items.length} รายการ</span><span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1"><Clock3 size={13} /> ประมาณ {totalMinutes} นาที</span></div>
+      <div className="mt-2 space-y-1">
+        {items.map((item, index) => {
           const Icon = item.icon;
           return (
-            <Link key={item.id} href={item.href} className="group flex items-center gap-2.5 rounded-xl px-2 py-2.5 transition hover:bg-slate-50 sm:gap-3">
+            <Link key={item.id} href={item.href} style={{ '--dashboard-plan-delay': `${260 + index * 75}ms` }} className="dashboard-motion-plan group flex items-center gap-2.5 rounded-xl border border-transparent px-2.5 py-2.5 transition hover:border-slate-100 hover:bg-slate-50 sm:gap-3">
               <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.color}`}><Icon size={18} /></span>
               <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-bold text-navy sm:text-sm">{item.title}</span><span className="mt-0.5 flex items-center gap-1 text-[11px] text-graydark/50 sm:text-xs"><Clock3 size={12} />ประมาณ {item.minutes} นาที<span className="hidden sm:inline"> · {item.subtitle}</span></span></span>
-              <span className="flex shrink-0 items-center gap-1.5 sm:gap-2"><span className="text-[13px] font-bold text-graydark/45 sm:text-sm">0/{item.target}</span><span className="h-[18px] w-[18px] rounded-full border-2 border-graylight/55 transition group-hover:border-accent-cyan sm:h-5 sm:w-5" /></span>
+              <span className="flex shrink-0 items-center gap-1.5 sm:gap-2"><span className="text-[13px] font-bold text-graydark/45 sm:text-sm">0/{item.target}</span><span className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 border-graylight/55 text-transparent transition group-hover:border-accent-cyan group-hover:text-accent-cyan sm:h-5 sm:w-5"><ArrowRight size={11} /></span></span>
             </Link>
           );
         })}
       </div>
-      <Link href="/practice" className="btn-navy mt-4 flex w-full items-center justify-center gap-2">เริ่มเรียนตามแผน <ArrowRight size={16} /></Link>
+      <Link href={startHref} className="btn-navy mt-4 flex w-full items-center justify-center gap-2">เริ่มจากรายการแรก <ArrowRight size={16} /></Link>
     </section>
   );
 }
@@ -414,10 +424,10 @@ function ReadinessRing({ value }) {
   const offset = circumference * (1 - value / 100);
 
   return (
-    <div className="relative h-32 w-32 shrink-0 max-[379px]:self-center sm:h-36 sm:w-36">
+    <div className="dashboard-motion-ring relative h-32 w-32 shrink-0 max-[379px]:self-center sm:h-36 sm:w-36">
       <svg viewBox="0 0 104 104" className="h-full w-full -rotate-90" aria-label={`ความพร้อม ${value} จาก 100`}>
         <circle cx="52" cy="52" r={radius} fill="none" strokeWidth="9" className="stroke-slate-100" />
-        <circle cx="52" cy="52" r={radius} fill="none" strokeWidth="9" strokeLinecap="round" className="stroke-emerald-500" strokeDasharray={circumference} strokeDashoffset={offset} />
+        <circle cx="52" cy="52" r={radius} fill="none" strokeWidth="9" strokeLinecap="round" className="dashboard-motion-ring-progress stroke-emerald-500" strokeDasharray={circumference} strokeDashoffset={offset} style={{ '--dashboard-ring-length': circumference, '--dashboard-ring-offset': offset }} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center"><p className="text-4xl font-black leading-none text-navy">{value}</p><p className="mt-1 text-sm font-semibold text-graydark/45">/100</p></div>
     </div>
@@ -428,10 +438,10 @@ function ExamReadiness({ data, subjectCount }) {
   const readiness = getReadiness(data, subjectCount);
 
   return (
-    <section className="app-card relative overflow-hidden p-5 sm:p-6">
+    <section className="app-card dashboard-motion-card dashboard-motion-delay-1 relative overflow-hidden p-5 sm:p-6">
       <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-emerald-100/55 blur-3xl" />
       <div className="relative">
-        <div className="flex items-center gap-2"><Target size={18} className="shrink-0 text-emerald-600" /><h2 className="font-bold text-navy">ความพร้อมก่อนสอบ</h2><span className="text-[10px] font-semibold text-graydark/40 max-[379px]:hidden">(Exam Readiness)</span><Info size={14} className="shrink-0 text-graydark/35" aria-label="ประเมินจากความแม่นยำและความครอบคลุมของวิชาที่ฝึก" /></div>
+        <div className="flex items-start justify-between gap-3"><div><p className="dashboard-eyebrow">STUDY INSIGHT</p><div className="mt-1 flex items-center gap-2"><Target size={18} className="shrink-0 text-emerald-600" /><h2 className="font-bold text-navy">ความพร้อมก่อนสอบ</h2><Info size={14} className="shrink-0 text-graydark/35" aria-label="ประเมินจากความแม่นยำและความครอบคลุมของวิชาที่ฝึก" /></div></div><span className={`rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold ${readiness.tone}`}>{readiness.label}</span></div>
         <div className="mt-5 flex items-center gap-4 max-[379px]:flex-col max-[379px]:items-stretch sm:gap-5">
           <ReadinessRing value={readiness.value} />
           <div className="min-w-0 flex-1">
@@ -490,7 +500,7 @@ function ContinueTasks({ data }) {
   };
 
   return (
-    <section className="app-card p-5 sm:p-6">
+    <section className="app-card dashboard-motion-card dashboard-motion-delay-3 p-5 sm:p-6">
       <div className="mb-4 flex min-w-0 items-start justify-between gap-2.5"><div className="min-w-0"><div className="flex items-center gap-2"><CalendarClock size={18} className="shrink-0 text-accent-cyan" /><h2 className="truncate font-bold text-navy">สิ่งที่ต้องทำต่อ</h2></div><p className="mt-1 truncate text-xs text-graydark/45">เลือกทำทีละเรื่อง เพื่อค่อย ๆ เพิ่มคะแนนของคุณ</p></div><Link href="/practice" className="shrink-0 text-[11px] font-semibold text-accent-cyan hover:underline sm:text-xs"><span className="sm:hidden">ดูทั้งหมด</span><span className="hidden sm:inline">ดูแบบฝึกหัดทั้งหมด</span></Link></div>
       <div className="space-y-2.5">
         {tasks.map((task) => (
@@ -507,7 +517,7 @@ function ContinueTasks({ data }) {
 
 function RecentHistory({ results }) {
   return (
-    <section className="app-card overflow-hidden p-0">
+    <section className="app-card dashboard-motion-card dashboard-motion-delay-4 overflow-hidden p-0">
       <div className="flex min-w-0 items-center justify-between gap-2 border-b border-graylight/20 px-4 py-3.5 sm:px-6 sm:py-4"><div className="flex min-w-0 items-center gap-2"><History size={18} className="shrink-0 text-violet-600" /><div className="min-w-0"><h2 className="truncate font-bold text-navy">ประวัติการสอบล่าสุด</h2><p className="mt-0.5 hidden text-xs text-graydark/45 sm:block">ผลการทำข้อสอบและแบบฝึกหัดล่าสุด</p></div></div><Link href="/history" className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-accent-cyan hover:underline sm:text-xs">ดูทั้งหมด <ArrowRight size={13} /></Link></div>
       {results.length ? (
         <div className="divide-y divide-graylight/15">
@@ -528,13 +538,13 @@ function RecentHistory({ results }) {
 
 function CompactMetrics({ stats }) {
   return (
-    <section className="app-card p-2.5 sm:p-3">
-      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
-        {stats.map(({ icon: Icon, label, value, sub, tone }) => (
-          <div key={label} className="rounded-2xl bg-slate-50/90 px-3.5 py-3 sm:px-4">
+    <section className="app-card dashboard-motion-card overflow-hidden p-0">
+      <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 xl:grid-cols-4 xl:divide-y-0">
+        {stats.map(({ icon: Icon, label, value, sub, tone }, index) => (
+          <div key={label} style={{ '--dashboard-metric-delay': `${80 + index * 75}ms` }} className="dashboard-motion-metric bg-white px-3.5 py-3.5 sm:px-4">
             <div className="flex items-center gap-2 text-graydark/55">
               <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${tone}`}><Icon size={15} /></span>
-              <p className="truncate text-[11px] font-medium">{label}</p>
+              <p className="truncate text-[11px] font-semibold">{label}</p>
             </div>
             <p className="mt-2 text-xl font-black leading-none text-navy sm:text-2xl">{value}</p>
             <p className="mt-1 truncate text-[10px] text-graydark/42">{sub}</p>
@@ -547,7 +557,7 @@ function CompactMetrics({ stats }) {
 
 function FocusPanel({ weakSubjects }) {
   return (
-    <section className="app-card p-5">
+    <section className="app-card dashboard-motion-card dashboard-motion-delay-4 p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2"><TrendingUp size={17} className="text-rose-500" /><h2 className="font-bold text-navy">จุดที่ควรโฟกัส</h2></div>
@@ -561,7 +571,7 @@ function FocusPanel({ weakSubjects }) {
           {weakSubjects.slice(0, 2).map((item) => (
             <Link key={item.subject.id} href={`/practice/${item.subject.id}`} className="group block rounded-xl border border-rose-100 bg-rose-50/55 px-3.5 py-3 transition hover:border-rose-200 hover:bg-rose-50">
               <div className="flex items-center justify-between gap-3"><p className="truncate text-sm font-bold text-navy">{item.subject.name}</p><span className="shrink-0 text-sm font-black text-rose-500">{item.pct}%</span></div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-rose-100"><div className="h-full rounded-full bg-rose-400" style={{ width: `${item.pct}%` }} /></div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-rose-100"><div className="dashboard-motion-meter h-full rounded-full bg-rose-400" style={{ '--dashboard-meter-width': `${item.pct}%` }} /></div>
               <p className="mt-1.5 text-[11px] text-graydark/45">ฝึกแล้ว {item.sessions} ครั้ง · เริ่มทบทวน <span className="group-hover:text-rose-500">→</span></p>
             </Link>
           ))}
@@ -578,9 +588,10 @@ function FocusPanel({ weakSubjects }) {
 
 function QuickActions() {
   return (
-    <section className="flex flex-col gap-4 rounded-2xl border border-cyan-100 bg-gradient-to-r from-cyan-50 via-white to-indigo-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+    <section className="dashboard-motion-card dashboard-motion-delay-5 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,35,64,0.03)] sm:flex-row sm:items-center sm:justify-between sm:px-6">
       <div>
-        <p className="font-bold text-navy">พร้อมฝึกต่อแล้วใช่ไหม?</p>
+        <p className="dashboard-eyebrow">QUICK START</p>
+        <p className="mt-1 font-bold text-navy">พร้อมฝึกต่อแล้วใช่ไหม?</p>
         <p className="mt-0.5 text-xs text-graydark/55">เลือกฝึกรายวิชา หรือจำลองสอบเต็มรูปแบบได้ทันที</p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -636,18 +647,17 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-5 pb-3 sm:pb-6">
-      <div className="hidden flex-wrap items-center justify-between gap-4 sm:flex">
-        <div>
-          <h1 className="app-section-heading text-2xl font-semibold text-navy">แดชบอร์ด</h1>
-          <p className="text-graydark/60 text-sm">สายอำนวยการ 2569</p>
-        </div>
+    <div className="dashboard-motion-root mx-auto max-w-[1440px] space-y-5 pb-3 sm:pb-6">
+      <section className="dashboard-workspace-header hidden items-center justify-between gap-5 rounded-3xl border border-slate-200/90 bg-white/85 px-5 py-4 shadow-[0_1px_2px_rgba(15,35,64,0.03)] backdrop-blur-sm sm:flex sm:px-6">
+        <div className="min-w-0"><p className="dashboard-eyebrow">PERSONAL STUDY WORKSPACE</p><h1 className="mt-1 text-2xl font-semibold tracking-tight text-navy">แดชบอร์ด</h1><p className="mt-1 text-sm text-graydark/55">เลือกหนึ่งเรื่องจากแผนวันนี้ แล้วค่อยสร้างความต่อเนื่องทีละวัน</p></div>
         <CountdownBox {...countdown} />
-      </div>
+      </section>
+
+      <div className="sm:hidden"><p className="dashboard-eyebrow">PERSONAL STUDY WORKSPACE</p><h1 className="mt-1 text-2xl font-semibold tracking-tight text-navy">แดชบอร์ด</h1><p className="mt-1 text-sm leading-6 text-graydark/55">เริ่มจากหนึ่งเรื่องในแผนวันนี้ แล้วค่อยสร้างความต่อเนื่องทีละวัน</p></div>
 
       <MobileExamBanner {...countdown} />
 
-      <div className="hidden sm:block"><CompactMetrics stats={statCards} /></div>
+      <CompactMetrics stats={statCards} />
 
       <ResumeBanner />
 
@@ -669,6 +679,101 @@ export default function DashboardPage() {
       </div>
 
       <QuickActions />
+      <style jsx global>{`
+        .dashboard-eyebrow {
+          color: #6b7d97;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: .13em;
+          line-height: 1.2;
+        }
+
+        .dashboard-workspace-header {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .dashboard-workspace-header::after {
+          position: absolute;
+          top: -4.5rem;
+          right: 15rem;
+          width: 12rem;
+          height: 12rem;
+          border: 1px solid rgba(79, 134, 247, .10);
+          border-radius: 9999px;
+          content: '';
+          pointer-events: none;
+        }
+
+        @keyframes dashboard-card-enter {
+          from { opacity: 0; transform: translateY(12px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes dashboard-metric-enter {
+          from { opacity: 0; transform: translateY(8px) scale(.985); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        @keyframes dashboard-plan-enter {
+          from { opacity: 0; transform: translateX(-8px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes dashboard-ring-draw {
+          from { stroke-dashoffset: var(--dashboard-ring-length); }
+          to { stroke-dashoffset: var(--dashboard-ring-offset); }
+        }
+
+        @keyframes dashboard-meter-grow {
+          from { transform: scaleX(0); }
+          to { transform: scaleX(1); }
+        }
+
+        .dashboard-motion-card {
+          animation: dashboard-card-enter 560ms cubic-bezier(.22, 1, .36, 1) both;
+          will-change: opacity, transform;
+        }
+
+        .dashboard-motion-delay-1 { animation-delay: 60ms; }
+        .dashboard-motion-delay-2 { animation-delay: 120ms; }
+        .dashboard-motion-delay-3 { animation-delay: 180ms; }
+        .dashboard-motion-delay-4 { animation-delay: 240ms; }
+        .dashboard-motion-delay-5 { animation-delay: 300ms; }
+
+        .dashboard-motion-metric {
+          animation: dashboard-metric-enter 440ms cubic-bezier(.22, 1, .36, 1) both;
+          animation-delay: var(--dashboard-metric-delay, 0ms);
+          will-change: opacity, transform;
+        }
+
+        .dashboard-motion-plan {
+          animation: dashboard-plan-enter 440ms cubic-bezier(.22, 1, .36, 1) both;
+          animation-delay: var(--dashboard-plan-delay, 0ms);
+          will-change: opacity, transform;
+        }
+
+        .dashboard-motion-ring-progress {
+          animation: dashboard-ring-draw 900ms cubic-bezier(.22, 1, .36, 1) 260ms both;
+        }
+
+        .dashboard-motion-meter {
+          width: var(--dashboard-meter-width);
+          transform-origin: left center;
+          animation: dashboard-meter-grow 700ms cubic-bezier(.22, 1, .36, 1) 260ms both;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .dashboard-motion-card,
+          .dashboard-motion-metric,
+          .dashboard-motion-plan,
+          .dashboard-motion-ring-progress,
+          .dashboard-motion-meter {
+            animation: none !important;
+            transform: none !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
