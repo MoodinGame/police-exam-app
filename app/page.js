@@ -89,7 +89,7 @@ export default async function HomePage() {
 
       <section className="relative border-b border-slate-100 bg-white">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-full bg-[radial-gradient(ellipse_at_80%_20%,rgba(42,91,255,0.10),transparent_32%),radial-gradient(ellipse_at_20%_15%,rgba(211,169,80,0.10),transparent_25%)]" />
-        <div className="relative mx-auto grid max-w-app gap-10 px-5 pb-14 pt-14 sm:px-8 sm:pb-20 sm:pt-20 lg:grid-cols-[0.96fr_1.04fr] lg:items-center lg:gap-12">
+        <div className="relative mx-auto grid max-w-app gap-8 px-5 pb-14 pt-14 sm:px-8 sm:pb-20 sm:pt-20 md:grid-cols-[0.96fr_1.04fr] md:items-center md:gap-8 lg:gap-12">
           <div className="max-w-xl">
             <Reveal className="flex flex-wrap items-center gap-2.5">
               <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-[#2457d6]"><Sparkles size={14} /> สำหรับผู้สมัครสอบตำรวจ</span>

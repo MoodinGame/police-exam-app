@@ -11,7 +11,7 @@ const subjectRows = [
 
 export default function StudyIntelligencePreview() {
   return (
-    <div className="relative mx-auto w-full max-w-2xl" aria-label="ตัวอย่างคลังความรู้และความก้าวหน้าในการอ่าน">
+    <div className="relative mx-auto w-full max-w-md sm:max-w-xl md:max-w-none" aria-label="ตัวอย่างคลังความรู้และความก้าวหน้าในการอ่าน">
       <div className="absolute inset-x-[8%] top-[13%] h-2/3 rounded-full bg-[radial-gradient(circle,rgba(50,100,245,0.15),rgba(211,169,80,0.08)_42%,transparent_70%)] blur-3xl" />
       <section className="dashboard-levitate relative overflow-hidden rounded-[1.8rem] border border-slate-200/80 bg-white/95 p-3 shadow-[0_26px_70px_rgba(23,52,91,0.16)] backdrop-blur sm:p-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -25,7 +25,7 @@ export default function StudyIntelligencePreview() {
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 dashboard-status" />กำลังอัปเดต</span>
         </div>
 
-        <div className="mt-3 grid min-h-[22rem] grid-cols-[0.29fr_0.71fr] gap-3 sm:min-h-[25rem] sm:gap-4">
+        <div className="mt-3 grid min-h-[20rem] grid-cols-1 gap-3 sm:min-h-[25rem] sm:grid-cols-[0.29fr_0.71fr] sm:gap-4">
           <aside className="hidden rounded-2xl border border-slate-100 bg-slate-50/80 p-3 sm:block">
             <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Library</p>
             <div className="mt-3 space-y-1">
