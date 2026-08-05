@@ -25,6 +25,64 @@ import { noCopyHandlers } from '@/lib/copyProtection';
 import ExamResultSummary from '@/components/ExamResultSummary';
 
 const LETTERS = ['A', 'B', 'C', 'D'];
+const ADMINISTRATION_TRACK_ID = 'general-affairs';
+const PATROL_TRACK_ID = 'patrol';
+const ADMINISTRATION_PARTS = [
+  { id: 'part-1', label: 'ส่วนที่ 1', subjectIds: ['aptitude', 'thai'] },
+  { id: 'part-2', label: 'ส่วนที่ 2', subjectIds: ['it', 'correspondence', 'law', 'english'] },
+];
+const PATROL_PARTS = [
+  { id: 'part-1', label: 'ส่วนที่ 1', subjectIds: ['aptitude', 'thai'] },
+  { id: 'part-2', label: 'ส่วนที่ 2', subjectIds: ['it', 'english', 'law', 'social'] },
+];
+const ADMINISTRATION_PASS_SCORE = 120;
+const PATROL_PASS_SCORE = 95;
+
+function isAdministrationExam(exam) {
+  return exam?.trackId === ADMINISTRATION_TRACK_ID;
+}
+
+function isPatrolExam(exam) {
+  return exam?.trackId === PATROL_TRACK_ID;
+}
+
+function getMockPassScore(exam) {
+  if (exam?.trackId === ADMINISTRATION_TRACK_ID) return ADMINISTRATION_PASS_SCORE;
+  if (exam?.trackId === PATROL_TRACK_ID) return PATROL_PASS_SCORE;
+  return null;
+}
+
+function calculateParts(items, definitions) {
+  return definitions.map((definition) => {
+    const subjects = definition.subjectIds.map((subjectId) => {
+      const subjectItems = items.filter((item) => item.categoryId === subjectId);
+      const correct = subjectItems.filter((item) => item.selectedIndex === item.answerIndex).length;
+      return {
+        subjectId,
+        subjectName: subjectItems[0]?.categoryName || subjectId,
+        correct,
+        total: subjectItems.length,
+      };
+    });
+    const total = subjects.reduce((sum, subject) => sum + subject.total, 0);
+    const correct = subjects.reduce((sum, subject) => sum + subject.correct, 0);
+    const percentage = total ? (correct / total) * 100 : 0;
+    return { ...definition, subjects, total, correct, percentage };
+  });
+}
+
+function mockExamPassed(exam, questions, answers) {
+  const passScore = getMockPassScore(exam);
+  if (passScore === null) return null;
+  const items = questions.map((question) => ({
+    categoryId: question.subjectId,
+    categoryName: question.subjectName || question.subjectId,
+    answerIndex: question.answerIndex,
+    selectedIndex: answers[question.id],
+  }));
+  const score = items.filter((item) => item.selectedIndex === item.answerIndex).length;
+  return score >= passScore;
+}
 
 // วงแหวนความคืบหน้าชุดเดียวกับแบบฝึกหัดรายวิชา
 function ProgressRing({ pct }) {
@@ -170,7 +228,7 @@ export default function MockExamTakingPage() {
       examId: slug,
       score,
       total: questions.length,
-      passed: score >= exam.passScore,
+      passed: mockExamPassed(exam, questions, answers),
       answers,
       durationSeconds: Math.max(0, durationSeconds - secondsLeft),
     });
@@ -228,7 +286,8 @@ export default function MockExamTakingPage() {
 
   const question = questions[current];
   const progress = Math.round((answeredCount / questions.length) * 100);
-  const passed = score >= exam.passScore;
+  const passScore = getMockPassScore(exam);
+  const hasPassingCriteria = passScore !== null;
 
   const submit = async () => {
     const remaining = questions.length - answeredCount;
@@ -287,7 +346,7 @@ export default function MockExamTakingPage() {
             <div className="min-w-0">
               <p className="text-[11px] text-graydark/50">ชุดข้อสอบ</p>
               <p className="text-sm font-semibold text-navy truncate">{exam.title}</p>
-              {exam.trackName && <p className="mt-0.5 text-[11px] font-semibold text-cyan-700">{exam.trackName} · เกณฑ์ผ่าน {exam.passScore}/{exam.totalQuestions}</p>}
+              {exam.trackName && <p className="mt-0.5 text-[11px] font-semibold text-cyan-700">{exam.trackName}{hasPassingCriteria ? ` · เกณฑ์ผ่าน ${passScore}/${exam.totalQuestions}` : ''}</p>}
             </div>
             <div className="hidden sm:block border-l border-graylight/25 pl-4">
               <p className="text-[11px] text-graydark/50">เวลาที่เหลือ</p>
@@ -435,7 +494,7 @@ export default function MockExamTakingPage() {
               <div><dt className="text-[11px] text-graydark/40">ชุดข้อสอบ</dt><dd className="font-medium text-navy">{exam.title}</dd></div>
               <div><dt className="text-[11px] text-graydark/40">จำนวนข้อ</dt><dd className="font-medium text-navy">{exam.totalQuestions} ข้อ</dd></div>
               <div><dt className="text-[11px] text-graydark/40">เวลาสอบ</dt><dd className="font-medium text-navy">{exam.durationMinutes} นาที</dd></div>
-              <div><dt className="text-[11px] text-graydark/40">เกณฑ์ผ่าน</dt><dd className="font-medium text-navy">{exam.passScore}/{exam.totalQuestions} คะแนน</dd></div>
+              {hasPassingCriteria && <div><dt className="text-[11px] text-graydark/40">เกณฑ์ผ่าน</dt><dd className="font-medium text-navy">{passScore}/{exam.totalQuestions} คะแนน</dd></div>}
             </dl>
           </section>
 
@@ -449,31 +508,25 @@ export default function MockExamTakingPage() {
   );
 }
 
-// ภาค ก คือวิชาความสามารถทั่วไปตามหลัก ก.พ. (คณิตศาสตร์ + ภาษาไทย) ซึ่งคงที่ทุกสายงาน
-// ส่วนภาค ข คือวิชาเฉพาะตำแหน่งที่เหลือในสัดส่วนของแต่ละสายงาน
-const PART_A_SUBJECT_IDS = new Set(['aptitude', 'thai']);
-const PART_PASS_RATIO = 0.6;
-
-function examPartOf(subjectId) {
-  return PART_A_SUBJECT_IDS.has(subjectId) ? 'ก' : 'ข';
-}
-
 function MockResult({ exam, questions, items, score, elapsedSeconds }) {
   const history = useAttemptHistory({ bank: 'mock', setId: exam.id });
-  const passThreshold = questions.length ? exam.passScore / questions.length : 0.6;
+  const hasAdministrationCriteria = isAdministrationExam(exam);
+  const hasPatrolCriteria = isPatrolExam(exam);
+  const passScore = getMockPassScore(exam);
+  const tableTrack = hasAdministrationCriteria ? 'administration' : hasPatrolCriteria ? 'patrol' : null;
 
   return (
     <>
-      {exam.blueprint?.length > 0 && <PartBreakdown exam={exam} items={items} score={score} />}
-      <div className={exam.blueprint?.length > 0 ? 'mt-4' : ''}>
+      {tableTrack && <PartBreakdown items={items} score={score} track={tableTrack} />}
+      <div className={tableTrack ? 'mt-4' : ''}>
         <ExamResultSummary
           title={exam.title}
-          subtitle={`เกณฑ์ผ่าน ${exam.passScore}/${questions.length} ข้อ`}
+          subtitle={passScore !== null ? `เกณฑ์ผ่าน ${passScore}/${questions.length} คะแนน` : 'สรุปผลเพื่อใช้ทบทวนความพร้อม'}
           score={score}
           total={questions.length}
           elapsedSeconds={elapsedSeconds}
           standardSeconds={exam.durationMinutes ? exam.durationMinutes * 60 : null}
-          passThreshold={passThreshold}
+          passThreshold={passScore !== null && questions.length ? passScore / questions.length : null}
           items={items}
           history={history}
           backHref="/mock-exam"
@@ -488,65 +541,82 @@ function MockResult({ exam, questions, items, score, elapsedSeconds }) {
   );
 }
 
-function PartBreakdown({ exam, items, score }) {
-  const subjectScores = exam.blueprint.map((entry) => {
-    const subjectItems = items.filter((item) => item.categoryId === entry.subjectId);
-    const correct = subjectItems.filter((item) => item.selectedIndex === item.answerIndex).length;
-    return { subjectId: entry.subjectId, subjectName: entry.subjectName, total: entry.questionCount, correct };
-  });
-  const parts = { ก: { correct: 0, total: 0 }, ข: { correct: 0, total: 0 } };
-  subjectScores.forEach((item) => {
-    const part = parts[examPartOf(item.subjectId)];
-    part.correct += item.correct;
-    part.total += item.total;
-  });
-  const partPassed = (part) => part.total > 0 && part.correct / part.total >= PART_PASS_RATIO;
-  const totalQuestions = exam.blueprint.reduce((sum, entry) => sum + entry.questionCount, 0);
-  const overallPassed = score >= exam.passScore && partPassed(parts.ก) && partPassed(parts.ข);
-
+function PartBreakdown({ items, score, track }) {
+  const scoreTable = track === 'patrol'
+    ? {
+      parts: PATROL_PARTS,
+      passScore: PATROL_PASS_SCORE,
+      eyebrow: 'PATROL SCORECARD',
+      title: 'เกณฑ์ผลสอบสายปราบปราม',
+      description: 'สรุปคะแนนแยกวิชา และวัดผลจากคะแนนรวมเท่านั้น',
+      mobileNote: 'สายปราบปรามใช้เกณฑ์ผ่านคะแนนรวม 95 คะแนน ไม่มีเกณฑ์ผ่านรายส่วน',
+    }
+    : {
+      parts: ADMINISTRATION_PARTS,
+      passScore: ADMINISTRATION_PASS_SCORE,
+      eyebrow: 'ADMINISTRATION SCORECARD',
+      title: 'เกณฑ์ผลสอบสายอำนวยการ',
+      description: 'สรุปคะแนนแยกวิชา พร้อมเกณฑ์ผ่านคะแนนรวม',
+      mobileNote: 'คะแนนรวมใช้เกณฑ์ผ่าน 120 คะแนน',
+  };
+  const parts = calculateParts(items, scoreTable.parts);
+  const subjects = parts.flatMap((part) => part.subjects);
+  const totalQuestions = parts.reduce((sum, part) => sum + part.total, 0);
+  const overallPassed = score >= scoreTable.passScore;
+  const overallPercentage = totalQuestions ? Math.round((score / totalQuestions) * 100) : 0;
+  const passPercentage = totalQuestions ? (scoreTable.passScore / totalQuestions) * 100 : 0;
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-      <div className="mb-4">
-        <h2 className="text-lg font-bold text-navy">คะแนนแยกภาค ก / ภาค ข</h2>
-        <p className="mt-1 text-xs text-graydark/50">{exam.trackName ? `สายงาน${exam.trackName} · ` : ''}เกณฑ์ผ่านแต่ละภาคใช้หลักทั่วไป {Math.round(PART_PASS_RATIO * 100)}% ของคะแนนเต็มภาคนั้น โปรดตรวจสอบเกณฑ์จริงจากประกาศรับสมัครของตำแหน่งที่สมัคร</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-bold tracking-[0.14em] text-accent-cyan">{scoreTable.eyebrow}</p>
+          <h2 className="mt-1 text-lg font-bold text-navy">{scoreTable.title}</h2>
+          <p className="mt-1 text-xs text-graydark/55">{scoreTable.description}</p>
+        </div>
+        <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${overallPassed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{overallPassed ? `ผ่านเกณฑ์ ${scoreTable.passScore} คะแนน` : `ขาดอีก ${Math.max(0, scoreTable.passScore - score)} คะแนน`}</span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] border-collapse text-center text-sm">
-          <thead>
-            <tr className="text-xs text-graydark/55">
-              {subjectScores.map((item, index) => (
-                <th key={item.subjectId} className="border-b border-slate-200 px-2 py-2 font-semibold">{index + 1}. {item.subjectName} ({item.total})</th>
-              ))}
-              <th className="border-b border-slate-200 bg-amber-50 px-2 py-2 font-bold text-amber-800">ภาค ก (เต็ม {parts.ก.total})</th>
-              <th className="border-b border-slate-200 bg-cyan-50 px-2 py-2 font-bold text-cyan-800">ภาค ข (เต็ม {parts.ข.total})</th>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <div>
+          <div className="flex items-end justify-between gap-3"><div><span className="text-3xl font-black tabular-nums text-navy">{score}</span><span className="ml-1 text-sm font-semibold text-graydark/45">/ {totalQuestions} คะแนน</span></div><span className="text-sm font-bold text-graydark/65">{overallPercentage}%</span></div>
+          <div className="relative mt-3 h-3 overflow-visible rounded-full bg-slate-100">
+            <div className="admin-score-bar h-full rounded-full bg-gradient-to-r from-accent-cyan to-[#4f86f7]" style={{ width: `${Math.min(overallPercentage, 100)}%` }} />
+            <span className="absolute -top-1 h-5 w-0.5 bg-accent-gold" style={{ left: `${passPercentage}%` }} aria-label={`เกณฑ์ผ่าน ${scoreTable.passScore} คะแนน`} />
+          </div>
+          <div className="mt-2 flex justify-between text-[11px] text-graydark/50"><span>0 คะแนน</span><span className="font-bold text-[#aa7a21]">เกณฑ์ผ่าน {scoreTable.passScore}</span><span>{totalQuestions} คะแนน</span></div>
+        </div>
+        <div className={`rounded-2xl border px-4 py-3 text-center ${overallPassed ? 'border-emerald-100 bg-emerald-50' : 'border-amber-100 bg-amber-50'}`}><p className={`text-lg font-black ${overallPassed ? 'text-emerald-700' : 'text-amber-700'}`}>{overallPassed ? 'ผ่าน' : 'ยังไม่ผ่าน'}</p><p className="mt-0.5 text-[11px] text-graydark/55">เกณฑ์ {scoreTable.passScore} คะแนน</p></div>
+      </div>
+
+      <div className="mt-5 rounded-2xl border border-slate-200 p-3 md:hidden">
+        <p className="px-1 pb-2 text-xs font-bold text-graydark/60">คะแนนรายวิชา</p>
+        <dl className="grid grid-cols-2 gap-2">
+          {subjects.map((subject, index) => <div key={subject.subjectId} className={`rounded-xl px-3 py-2.5 ${index < 2 ? 'bg-blue-50/55' : 'bg-emerald-50/55'}`}><dt className="truncate text-[11px] font-medium text-graydark/55">{subject.subjectName}</dt><dd className="mt-1 text-base font-black tabular-nums text-navy">{subject.correct}<span className="text-xs font-semibold text-graydark/40"> / {subject.total}</span></dd></div>)}
+        </dl>
+        <p className="px-1 text-center text-[11px] text-graydark/45">{scoreTable.mobileNote}</p>
+      </div>
+
+      <div className="mt-5 hidden overflow-x-auto rounded-2xl border border-slate-200 md:block [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <table className="w-full min-w-[720px] border-collapse text-center text-sm">
+          <thead className="text-xs font-bold">
+            <tr className="bg-white text-graydark/60">
+              {subjects.map((subject, index) => <th key={subject.subjectId} className={`border-b px-2 py-3 font-semibold ${index < 2 ? 'border-blue-100 bg-blue-50/35 text-blue-800' : 'border-emerald-100 bg-emerald-50/35 text-emerald-800'} ${index < subjects.length - 1 ? 'border-r' : ''}`}>{subject.subjectName}<span className="mt-0.5 block text-[10px] font-medium text-graydark/40">เต็ม {subject.total}</span></th>)}
             </tr>
           </thead>
           <tbody>
-            <tr>
-              {subjectScores.map((item) => (
-                <td key={item.subjectId} className="px-2 py-3 font-bold text-navy">{item.correct}</td>
-              ))}
-              <td className="bg-amber-50/60 px-2 py-3">
-                <p className="font-black text-navy">{parts.ก.correct}</p>
-                <p className={`mt-0.5 text-[11px] font-bold ${partPassed(parts.ก) ? 'text-emerald-600' : 'text-red-500'}`}>{partPassed(parts.ก) ? 'ผ่าน' : 'ไม่ผ่าน'}</p>
-              </td>
-              <td className="bg-cyan-50/60 px-2 py-3">
-                <p className="font-black text-navy">{parts.ข.correct}</p>
-                <p className={`mt-0.5 text-[11px] font-bold ${partPassed(parts.ข) ? 'text-emerald-600' : 'text-red-500'}`}>{partPassed(parts.ข) ? 'ผ่าน' : 'ไม่ผ่าน'}</p>
-              </td>
+            <tr className="text-base font-bold tabular-nums text-navy">
+              {subjects.map((subject, index) => <td key={subject.subjectId} className={`${index < subjects.length - 1 ? 'border-r' : ''} px-2 py-4 ${index < 2 ? 'border-blue-100 bg-blue-50/20' : 'border-emerald-100 bg-emerald-50/20'}`}>{subject.correct}</td>)}
             </tr>
           </tbody>
+          <tfoot>
+            <tr className="border-t border-slate-200 bg-slate-50">
+              <td colSpan="2" className="px-4 py-3 text-left text-xs font-bold text-graydark/60">รวมคะแนนทั้งหมด</td>
+              <td colSpan="2" className="px-4 py-3 text-lg font-black tabular-nums text-navy">{score}/{totalQuestions}</td>
+              <td colSpan="1" className="px-4 py-3 text-sm font-bold text-graydark/65">{overallPercentage.toFixed(2)}%</td>
+              <td colSpan="1" className={`px-4 py-3 text-sm font-bold ${overallPassed ? 'text-emerald-700' : 'text-amber-700'}`}>{overallPassed ? `ผ่าน ${scoreTable.passScore}` : `ขาด ${Math.max(0, scoreTable.passScore - score)}`}</td>
+            </tr>
+          </tfoot>
         </table>
-      </div>
-      <div className="mt-4 grid gap-3 overflow-hidden rounded-2xl border border-slate-200 sm:grid-cols-2">
-        <div className="flex flex-col items-center justify-center gap-1 bg-slate-50 p-4">
-          <p className="text-xs font-semibold text-graydark/55">รวมคะแนนทั้งหมด ({totalQuestions})</p>
-          <p className="text-2xl font-black text-navy">{score}</p>
-        </div>
-        <div className={`flex flex-col items-center justify-center gap-1 p-4 ${overallPassed ? 'bg-emerald-50' : 'bg-red-50'}`}>
-          <p className="text-xs font-semibold text-graydark/55">ผลสอบข้อเขียน</p>
-          <p className={`text-sm font-bold ${overallPassed ? 'text-emerald-700' : 'text-red-600'}`}>{overallPassed ? 'อยู่ในกลุ่มให้เข้าสอบความเหมาะสมกับตำแหน่ง (รอบ 2)' : 'ไม่อยู่ในกลุ่มให้เข้าสอบความเหมาะสมกับตำแหน่ง (รอบ 2)'}</p>
-        </div>
       </div>
     </section>
   );

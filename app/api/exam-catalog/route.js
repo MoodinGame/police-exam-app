@@ -40,7 +40,7 @@ export async function GET(request) {
 
     let user = null;
     let access = null;
-    const phone = getSessionPhone();
+    const phone = await getSessionPhone();
     if (phone) {
       user = await findUserByPhone(phone);
       if (user) access = await getUserAccess(supabase, user.id);

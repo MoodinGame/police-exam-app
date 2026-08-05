@@ -64,6 +64,7 @@ async function drawRandomQuestions(supabase, track) {
 
 export async function GET(request, { params }) {
   try {
+    const { slug } = await params;
     const user = await requireCurrentUser();
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
@@ -72,7 +73,7 @@ export async function GET(request, { params }) {
     const { data: examSet, error: setError } = await supabase
       .from('exam_sets')
       .select('id, slug, title, description, track_id, duration_minutes, difficulty, is_free, status, subject_id')
-      .eq('slug', params.slug)
+      .eq('slug', slug)
       .eq('bank', 'mock')
       .maybeSingle();
     if (setError) throw setError;

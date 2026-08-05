@@ -25,7 +25,7 @@ import {
   UsersRound,
   X,
 } from 'lucide-react';
-import { formatCurrency, formatDate, getPublicFallbackPlans } from '@/lib/membership';
+import { formatCurrency, formatDate } from '@/lib/membership';
 import { confirmDeletePlan } from '@/lib/sweetAlert';
 
 const fieldClass = 'mt-1.5 field';
@@ -87,7 +87,7 @@ export default function AdminPackageAccessManager() {
       const [plansResult, accessResult] = await Promise.all([plansResponse.json(), accessResponse.json()]);
       if (!plansResponse.ok) throw new Error(plansResult.error || 'ไม่สามารถโหลดแพ็กเกจได้');
       if (!accessResponse.ok) throw new Error(accessResult.error || 'ไม่สามารถโหลดสิทธิ์ผู้ใช้ได้');
-      setPlans(plansResult.plans?.length ? plansResult.plans : getPublicFallbackPlans());
+      setPlans(plansResult.plans || []);
       setUsers(accessResult.users || []);
       setMockSets(accessResult.mockSets || []);
     } catch (loadError) {

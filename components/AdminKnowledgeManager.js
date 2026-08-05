@@ -23,6 +23,8 @@ const EMPTY_ARTICLE = {
   summary: '',
   body: '',
   keyPoints: '',
+  techniques: '',
+  formulaCards: '',
   pitfalls: '',
   examGuide: '',
   isPublished: false,
@@ -30,6 +32,28 @@ const EMPTY_ARTICLE = {
 };
 
 const fieldClass = 'mt-1.5 field';
+
+function formatTechniqueRows(rows) {
+  return Array.isArray(rows) ? rows.map((item) => `${item.title || ''} | ${item.detail || ''}`).filter((item) => item !== ' | ').join('\n') : '';
+}
+
+function formatFormulaRows(rows) {
+  return Array.isArray(rows) ? rows.map((item) => `${item.label || ''} | ${item.formula || ''} | ${item.note || ''}`).filter((item) => item !== ' |  | ').join('\n') : '';
+}
+
+function parseTechniqueRows(value) {
+  return String(value || '').split(/\r?\n/).map((line) => {
+    const [title = '', ...detail] = line.split('|');
+    return { title: title.trim(), detail: detail.join('|').trim() };
+  }).filter((item) => item.title && item.detail);
+}
+
+function parseFormulaRows(value) {
+  return String(value || '').split(/\r?\n/).map((line) => {
+    const [label = '', formula = '', ...note] = line.split('|');
+    return { label: label.trim(), formula: formula.trim(), note: note.join('|').trim() };
+  }).filter((item) => item.label && item.formula);
+}
 
 function normalizeArticle(article) {
   return {
@@ -40,6 +64,8 @@ function normalizeArticle(article) {
     summary: article.summary || '',
     body: article.body || '',
     keyPoints: Array.isArray(article.key_points) ? article.key_points.join('\n') : '',
+    techniques: formatTechniqueRows(article.techniques),
+    formulaCards: formatFormulaRows(article.formula_cards),
     pitfalls: article.pitfalls || '',
     examGuide: article.exam_guide || '',
     isPublished: Boolean(article.is_published),
@@ -111,7 +137,11 @@ export default function AdminKnowledgeManager() {
       const response = await fetch('/api/admin/knowledge', {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          techniques: parseTechniqueRows(form.techniques),
+          formulaCards: parseFormulaRows(form.formulaCards),
+        }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'ไม่สามารถบันทึกบทเรียนได้');
@@ -178,6 +208,10 @@ export default function AdminKnowledgeManager() {
         <label className="mt-4 block text-sm font-bold text-navy">ชื่อบทเรียน<input required maxLength={180} value={form.title} onChange={(event) => updateForm('title', event.target.value)} placeholder="เช่น หลักการจัดทำหนังสือราชการ" className={fieldClass} /></label>
         <label className="mt-4 block text-sm font-bold text-navy">คำเกริ่นสรุป <span className="font-normal text-graydark/45">(แสดงใต้ชื่อบทเรียน)</span><textarea rows={2} maxLength={700} value={form.summary} onChange={(event) => updateForm('summary', event.target.value)} placeholder="สรุปว่าอ่านบทเรียนนี้แล้วผู้เรียนจะเข้าใจอะไร" className={fieldClass} /></label>
         <label className="mt-4 block text-sm font-bold text-navy">เนื้อหาบทเรียน<textarea required rows={12} maxLength={30000} value={form.body} onChange={(event) => updateForm('body', event.target.value)} placeholder={'เขียนเนื้อหาละเอียดได้เต็มที่\n\nเว้นบรรทัดเพื่อแยกย่อหน้า'} className={fieldClass} /></label>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <label className="text-sm font-bold text-navy">เทคนิคทำข้อสอบ <span className="font-normal text-graydark/45">(1 บรรทัดต่อ 1 เทคนิค: ชื่อเทคนิค | คำอธิบาย)</span><textarea rows={5} value={form.techniques} onChange={(event) => updateForm('techniques', event.target.value)} placeholder={'หาโจทย์ถามอะไร | ขีดคำสำคัญและระบุสิ่งที่โจทย์ต้องการก่อนเลือกสูตร\nแทนค่าทีละส่วน | เขียนค่าที่โจทย์ให้ใต้สัญลักษณ์ก่อนคำนวณ'} className={fieldClass} /></label>
+          <label className="text-sm font-bold text-navy">สูตรหรือกฎที่ต้องจำ <span className="font-normal text-graydark/45">(ชื่อ | สูตร/กฎ | ใช้เมื่อ)</span><textarea rows={5} value={form.formulaCards} onChange={(event) => updateForm('formulaCards', event.target.value)} placeholder={'พจน์ที่ n | aₙ = a₁ + (n−1)d | ใช้หาพจน์ลำดับเลขคณิต\nผลต่างร่วม | d = (aₙ − a₁) / (n−1) | เมื่อรู้พจน์แรกและพจน์ที่ n'} className={fieldClass} /></label>
+        </div>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="text-sm font-bold text-navy">ประเด็นสำคัญ <span className="font-normal text-graydark/45">(1 บรรทัดต่อ 1 ข้อ)</span><textarea rows={5} value={form.keyPoints} onChange={(event) => updateForm('keyPoints', event.target.value)} placeholder={'นิยามที่ต้องจำ\nองค์ประกอบสำคัญ\nคำที่มักออกสอบ'} className={fieldClass} /></label>
           <div className="space-y-4"><label className="block text-sm font-bold text-navy">จุดที่มักพลาด<textarea rows={2} maxLength={2000} value={form.pitfalls} onChange={(event) => updateForm('pitfalls', event.target.value)} placeholder="อธิบายข้อควรระวัง" className={fieldClass} /></label><label className="block text-sm font-bold text-navy">แนวข้อสอบ<textarea rows={2} maxLength={2000} value={form.examGuide} onChange={(event) => updateForm('examGuide', event.target.value)} placeholder="ลักษณะโจทย์หรือวิธีอ่านโจทย์" className={fieldClass} /></label></div>

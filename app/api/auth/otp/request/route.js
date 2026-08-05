@@ -121,7 +121,8 @@ export async function POST(request) {
     return NextResponse.json({ error: 'ระบบ SMS ยังไม่ได้ตั้งค่า โปรดเพิ่ม THSMS_API_TOKEN, THSMS_SENDER และ OTP_HMAC_SECRET บน server' }, { status: 503 });
   }
 
-  const forwarded = headers().get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const requestHeaders = await headers();
+  const forwarded = requestHeaders.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
   const rateKey = `${forwarded}:${phone}`;
   const requestedAt = canRequestOtp(rateKey);
   if (!requestedAt) {
@@ -168,7 +169,8 @@ export async function POST(request) {
     }
   }
 
-  cookies().set(OTP_CHALLENGE_COOKIE, serializeChallenge(challenge.value), {
+  const cookieStore = await cookies();
+  cookieStore.set(OTP_CHALLENGE_COOKIE, serializeChallenge(challenge.value), {
     ...secureCookieOptions,
     maxAge: OTP_TTL_SECONDS,
   });

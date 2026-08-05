@@ -10,6 +10,17 @@ const phoneIsValid = (value) => /^(0\d{9}|66\d{9})$/.test(String(value || '').re
 const usernameIsValid = (value) => /^[A-Za-z0-9]{4,15}$/.test(value) && /[A-Za-z]/.test(value);
 const emailIsValid = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
+async function parseApiResponse(response) {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 export default function AuthCard({ mode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -63,8 +74,9 @@ export default function AuthCard({ mode }) {
           ...(isRegister ? { username, email, acceptedTerms } : {}),
         }),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'ส่งรหัส OTP ไม่สำเร็จ');
+      const result = await parseApiResponse(response);
+      if (!response.ok) throw new Error(result?.error || 'ส่งรหัส OTP ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      if (!result) throw new Error('ระบบตอบกลับไม่สมบูรณ์ กรุณาลองใหม่อีกครั้ง');
       setStep('otp');
       setOtp('');
       setResendIn(result.resendAfter || 60);
@@ -91,8 +103,9 @@ export default function AuthCard({ mode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ otp }),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'ยืนยันรหัส OTP ไม่สำเร็จ');
+      const result = await parseApiResponse(response);
+      if (!response.ok) throw new Error(result?.error || 'ยืนยันรหัส OTP ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      if (!result) throw new Error('ระบบตอบกลับไม่สมบูรณ์ กรุณาลองใหม่อีกครั้ง');
       router.push('/dashboard');
     } catch (verifyError) {
       setError(verifyError.message || 'ยืนยันรหัส OTP ไม่สำเร็จ');

@@ -1,11 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: [
-    './app/**/*.{js,jsx}',
-    './components/**/*.{js,jsx}',
+    './app/**/*.{js,jsx,ts,tsx}',
+    './components/**/*.{js,jsx,ts,tsx}',
     // lib/ เก็บคลาสสีไว้เป็นสตริง (เช่น subjectStyles.js, calendarEvents.js)
     // ถ้าไม่สแกนที่นี่ Tailwind จะไม่สร้างคลาสเหล่านั้น ทำให้พื้นหลังการ์ดหายไป
-    './lib/**/*.{js,jsx}',
+    './lib/**/*.{js,jsx,ts,tsx}',
   ],
   theme: {
     extend: {
