@@ -18,9 +18,12 @@ function loadLocalEnvironment() {
 
 loadLocalEnvironment();
 
-const isProduction = process.env.NODE_ENV === 'production'
-  || process.env.VERCEL_ENV === 'production'
-  || process.env.POLREADY_DEPLOY_TARGET === 'production';
+// Next.js sets NODE_ENV=production for both Vercel Preview and Production
+// builds. Keep the strict secret check for actual production releases, while
+// allowing a preview deployment to build without live credentials.
+const isProduction = process.env.VERCEL_ENV === 'production'
+  || process.env.POLREADY_DEPLOY_TARGET === 'production'
+  || (process.env.NODE_ENV === 'production' && !process.env.VERCEL_ENV);
 const errors = [];
 const warnings = [];
 const valueOf = (key) => String(process.env[key] || '').trim();
