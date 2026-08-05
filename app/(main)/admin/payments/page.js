@@ -28,6 +28,7 @@ export default function AdminPaymentsPage() {
   const [reviewingId, setReviewingId] = useState(null);
   const [testingNotification, setTestingNotification] = useState(false);
   const [error, setError] = useState('');
+  const [notificationIssue, setNotificationIssue] = useState('');
   const [accessError, setAccessError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -80,10 +81,12 @@ export default function AdminPaymentsPage() {
   const testNotification = async () => {
     setTestingNotification(true);
     setError('');
+    setNotificationIssue('');
     setNotice('');
     try {
       const response = await fetch('/api/admin/notifications/test', { method: 'POST' });
       const result = await response.json();
+      if (!response.ok && result.reason) setNotificationIssue(result.reason);
       if (!response.ok) throw new Error(result.error || 'ไม่สามารถทดสอบการแจ้งเตือนได้');
       setNotice(`ส่งข้อความทดสอบไปยังแอดมิน ${result.delivered} คนแล้ว`);
     } catch (notificationError) {
@@ -170,6 +173,18 @@ export default function AdminPaymentsPage() {
       </header>
 
       {error && <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {notificationIssue === 'no_subscribers' && <section className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-5 text-amber-950" aria-live="polite">
+        <h2 className="font-semibold">เชื่อมบัญชี LINE ของผู้ดูแลอีก 1 ขั้นตอน</h2>
+        <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-6 text-amber-900">
+          <li>เปิด LINE บนมือถือ แล้วเพิ่มเพื่อน OA <span className="font-semibold">@032jhwyk</span></li>
+          <li>ส่ง <span className="rounded bg-white px-1.5 py-0.5 font-mono text-xs">/subscribe ตามด้วย LINE_ADMIN_SETUP_TOKEN</span></li>
+          <li>เมื่อ OA ตอบยืนยัน ให้กลับมากด “ทดสอบแจ้งเตือน LINE” อีกครั้ง</li>
+        </ol>
+        <p className="mt-3 text-xs text-amber-800">รหัส setup token ดูหรือเปลี่ยนได้เฉพาะใน Vercel Environment Variables — อย่าส่งรหัสนี้ให้ผู้อื่น</p>
+      </section>}
+      {notificationIssue === 'missing_access_token' && <section className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" aria-live="polite">
+        ตั้งค่า <span className="font-mono text-xs">LINE_CHANNEL_ACCESS_TOKEN</span> ใน Vercel เฉพาะ Production แล้ว Redeploy ก่อนทดสอบอีกครั้ง
+      </section>}
       {notice && <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div>}
 
       <section className="border border-graylight/25 rounded-2xl p-5 sm:p-6 mb-6">
