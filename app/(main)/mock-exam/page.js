@@ -1,10 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  BarChart3,
   ChevronRight,
   Clock3,
   FileText,
@@ -63,9 +62,15 @@ export default function MockExamPage() {
   }, []);
 
   const availableExams = exams || [];
+  // API ส่งมาเรียงตามวันเผยแพร่ล่าสุด ทำให้อ่านเป็น "ชุดที่ 3 → 2 → 1" สลับไปมา
+  // จัดใหม่ให้เรียงตามสายงานแล้วตามชื่อชุด โดยใช้ numeric เพื่อให้ ชุดที่ 2 มาก่อน ชุดที่ 10
+  const orderedExams = useMemo(() => [...availableExams].sort((a, b) => (
+    (a.trackName || '').localeCompare(b.trackName || '', 'th')
+    || a.title.localeCompare(b.title, 'th', { numeric: true })
+  )), [availableExams]);
   const visibleExams = trackFilter === 'all'
-    ? availableExams
-    : availableExams.filter((exam) => exam.trackId === trackFilter);
+    ? orderedExams
+    : orderedExams.filter((exam) => exam.trackId === trackFilter);
   const totalQuestions = availableExams.reduce((sum, exam) => sum + exam.totalQuestions, 0);
   const loading = exams === null && !loadError;
 
@@ -113,16 +118,18 @@ export default function MockExamPage() {
         </div>
 
         {loading ? (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {[0, 1].map((item) => <div key={item} className="skeleton h-60 rounded-3xl" />)}
+          <div className="space-y-3">
+            {[0, 1, 2].map((item) => <div key={item} className="skeleton h-28 rounded-2xl" />)}
           </div>
         ) : visibleExams.length === 0 ? (
           <EmptyMockState hasAnyExam={availableExams.length > 0} />
         ) : (
-          <div className="grid gap-4 lg:grid-cols-2" aria-label="รายการข้อสอบเสมือนจริง">
-            {visibleExams.map((exam) => (
+          // เรียงลงมาเป็นรายการ อ่านลำดับชุดได้จากบนลงล่างโดยไม่ต้องกวาดสายตาซ้าย-ขวา
+          <ol className="space-y-3" aria-label="รายการข้อสอบเสมือนจริง">
+            {visibleExams.map((exam, index) => (
               <MockExamCard
                 key={exam.id}
+                order={index + 1}
                 exam={exam}
                 attempt={attempts[exam.slug]}
                 isActive={activeSession?.examId === exam.slug}
@@ -131,7 +138,7 @@ export default function MockExamPage() {
                 onStart={() => setStartingExam(exam)}
               />
             ))}
-          </div>
+          </ol>
         )}
       </section>
 
@@ -194,49 +201,46 @@ function TrackScopeDetails({ track }) {
   );
 }
 
-function MockExamCard({ exam, attempt, isActive, canStart, isLoggedIn, onStart }) {
+function MockExamCard({ order, exam, attempt, isActive, canStart, isLoggedIn, onStart }) {
   const difficulty = getDifficultyMeta(exam.difficulty);
 
   return (
-    <article className="app-card app-card-hover flex flex-col p-5 sm:p-6">
-      <div className="flex items-start gap-3.5">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-navy/5 text-navy">
-          <FileText size={21} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-base font-semibold leading-6 text-navy [overflow-wrap:anywhere] sm:text-lg">{exam.title}</h3>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {exam.trackName && <Badge className="bg-navy/5 text-navy">{exam.trackName}</Badge>}
-            <Badge className={`border ${difficulty.className}`}>{difficulty.label}</Badge>
-            {exam.isFree
-              ? <Badge className="bg-emerald-50 text-emerald-700">ทดลองฟรี</Badge>
-              : <Badge className="bg-amber-50 text-amber-700">สมาชิก</Badge>}
-            {isActive && <Badge className="bg-accent-cyan/10 text-accent-cyan">กำลังทำอยู่</Badge>}
+    <li className="app-card app-card-hover p-4 sm:p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+        {/* เลขลำดับต้องอยู่ข้างชื่อชุดเสมอ ไม่งั้นบนมือถือจะกินบรรทัดเปล่าไปหนึ่งบรรทัด */}
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-navy/5 text-sm font-bold text-navy" aria-hidden="true">
+            {order}
+          </span>
+
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-semibold leading-6 text-navy [overflow-wrap:anywhere]">{exam.title}</h3>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {exam.trackName && <Badge className="bg-navy/5 text-navy">{exam.trackName}</Badge>}
+              <Badge className={`border ${difficulty.className}`}>{difficulty.label}</Badge>
+              {exam.isFree
+                ? <Badge className="bg-emerald-50 text-emerald-700">ทดลองฟรี</Badge>
+                : <Badge className="bg-amber-50 text-amber-700">สมาชิก</Badge>}
+              {isActive && <Badge className="bg-accent-cyan/10 text-accent-cyan">กำลังทำอยู่</Badge>}
+              {attempt && (
+                <Badge className="bg-slate-100 text-graydark">ผลล่าสุด {attempt.score}/{attempt.total}</Badge>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* ตัวเลขสำคัญเรียงแนวนอน คั่นด้วยเส้น อ่านเทียบระหว่างชุดได้ง่าย */}
+        <dl className="flex shrink-0 divide-x divide-line rounded-2xl bg-slate-50/80 px-1 py-2">
+          <Metric icon={FileText} value={exam.totalQuestions} label="ข้อสอบ" />
+          <Metric icon={Clock3} value={exam.durationMinutes} label="นาที" />
+          <Metric icon={Target} value={exam.passScore} label="เกณฑ์ผ่าน" />
+        </dl>
+
+        <div className="shrink-0 lg:w-52">
+          <ExamAction exam={exam} isActive={isActive} hasAttempt={Boolean(attempt)} canStart={canStart} isLoggedIn={isLoggedIn} onStart={onStart} />
+        </div>
       </div>
-
-      {exam.description && (
-        <p className="mt-4 line-clamp-2 text-sm leading-6 text-graydark/65">{exam.description}</p>
-      )}
-
-      <dl className="mt-4 grid grid-cols-3 divide-x divide-line rounded-2xl bg-slate-50/80 py-3">
-        <Metric icon={FileText} value={exam.totalQuestions} label="ข้อสอบ" />
-        <Metric icon={Clock3} value={exam.durationMinutes} label="นาที" />
-        <Metric icon={Target} value={exam.passScore} label="เกณฑ์ผ่าน" />
-      </dl>
-
-      {attempt && (
-        <p className="mt-3 inline-flex items-center gap-2 text-xs text-graydark/60">
-          <BarChart3 size={14} className="text-accent-cyan" />
-          ผลล่าสุด <strong className="text-navy">{attempt.score}/{attempt.total}</strong> ข้อ
-        </p>
-      )}
-
-      <div className="mt-5 pt-1">
-        <ExamAction exam={exam} isActive={isActive} hasAttempt={Boolean(attempt)} canStart={canStart} isLoggedIn={isLoggedIn} onStart={onStart} />
-      </div>
-    </article>
+    </li>
   );
 }
 
@@ -246,7 +250,7 @@ function Badge({ className, children }) {
 
 function Metric({ icon: Icon, value, label }) {
   return (
-    <div className="min-w-0 px-2 text-center">
+    <div className="min-w-0 px-3 text-center sm:px-4">
       <dt className="sr-only">{label}</dt>
       <Icon size={14} className="mx-auto text-graylight" />
       <dd className="mt-1 truncate text-lg font-bold leading-tight text-navy">{value}</dd>

@@ -25,6 +25,7 @@ import {
   Gamepad2,
   ShieldCheck,
 } from 'lucide-react';
+import { BrandMark } from '@/components/BrandLogo';
 
 const baseNavSections = [
   {
@@ -75,7 +76,7 @@ function SidebarBrand({ showQuickStart = false }) {
     <div className="relative overflow-hidden border-b border-white/10 px-5 py-5">
       <div className="pointer-events-none absolute -right-8 -top-9 h-24 w-24 rounded-full border border-accent-cyan/20" />
       <div className="relative flex items-center gap-3">
-        <span className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-accent-cyan to-[#167da5] text-base font-black text-navy shadow-[0_8px_16px_rgba(79,134,247,0.18)]">P</span>
+        <BrandMark size={40} className="shrink-0 text-white" />
         <div className="min-w-0"><Logo /><p className="mt-0.5 text-[9px] font-semibold tracking-[0.19em] text-white/45">EXAM PREPARATION</p></div>
       </div>
       {showQuickStart && <Link href="/practice" className="relative mt-5 flex items-center justify-between rounded-2xl border border-accent-gold/25 bg-gradient-to-r from-accent-gold/20 to-white/5 px-3.5 py-3 text-sm font-semibold text-white transition hover:border-accent-gold/45 hover:bg-accent-gold/25"><span className="flex items-center gap-2"><Sparkles size={16} className="text-accent-gold" />เริ่มฝึกวันนี้</span><Zap size={17} className="text-accent-gold" /></Link>}
@@ -311,7 +312,7 @@ export default function Sidebar() {
         className="lg:hidden fixed inset-y-0 left-0 z-[60] w-72 max-w-[85vw] bg-[radial-gradient(circle_at_100%_0%,rgba(79,134,247,0.18),transparent_30%),linear-gradient(160deg,#2B2D42,#202238)] text-white flex flex-col transition-transform duration-200 shadow-2xl"
       >
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-          <div className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-xl bg-accent-cyan text-sm font-black text-navy">P</span><div><Logo /><p className="mt-0.5 text-[9px] font-semibold tracking-[0.16em] text-white/45">MAIN MENU</p></div></div>
+          <div className="flex items-center gap-3"><BrandMark size={36} className="shrink-0 text-white" /><div><Logo /><p className="mt-0.5 text-[9px] font-semibold tracking-[0.16em] text-white/45">MAIN MENU</p></div></div>
           <button
             type="button"
             onClick={() => setOpen(false)}

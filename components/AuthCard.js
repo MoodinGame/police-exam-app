@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Check, LoaderCircle, MessageSquareText, ShieldCheck } from 'lucide-react';
+import { BrandLogo } from '@/components/BrandLogo';
 
 const phoneIsValid = (value) => /^(0\d{9}|66\d{9})$/.test(String(value || '').replace(/\D/g, ''));
 const usernameIsValid = (value) => /^[A-Za-z0-9]{4,15}$/.test(value) && /[A-Za-z]/.test(value);
@@ -117,10 +118,7 @@ export default function AuthCard({ mode }) {
     <div className="min-h-screen bg-[#f7f8fb]">
       <header className="border-b-[3px] border-[#d3a950] bg-[#1c2b5a] text-white shadow-sm">
         <div className="mx-auto flex h-[80px] max-w-app items-center justify-between px-5 sm:h-[96px] sm:px-8">
-          <Link href="/" className="flex items-center gap-3" aria-label="POLREADY หน้าแรก">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#d3a950]/70 bg-white/5 text-[#e3bd69]"><ShieldCheck size={22} /></span>
-            <span className="border-l border-white/15 pl-3"><span className="block text-lg font-semibold tracking-[0.08em]">POLREADY</span><span className="block text-[10px] tracking-[0.14em] text-white/55">เตรียมสอบตำรวจ</span></span>
-          </Link>
+          <Link href="/" aria-label="POLREADY หน้าแรก"><BrandLogo tone="dark" /></Link>
           <Link href={isRegister ? '/login' : '/register'} className="rounded-xl bg-[#d3a950] px-4 py-2.5 text-sm font-semibold text-[#172856] transition hover:bg-[#e3bd69]">{isRegister ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'}</Link>
         </div>
       </header>

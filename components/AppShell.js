@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { ArrowLeft, BookOpenCheck, ClipboardList, CreditCard, Database, KeyRound, Library, ShieldCheck, Sparkles } from 'lucide-react';
 import LoginUpdateNotice from '@/components/LoginUpdateNotice';
 import Sidebar from '@/components/Sidebar';
+import { BrandMark } from '@/components/BrandLogo';
 
 function AdminShell({ children, pathname }) {
   const contentActive = pathname === '/admin' || pathname.startsWith('/admin/content');
@@ -36,7 +37,7 @@ function AdminShell({ children, pathname }) {
       <header className="sticky top-0 z-30 border-b border-cyan-300/20 bg-gradient-to-r from-[#101d3d] via-[#152b55] to-[#087b9d] shadow-lg shadow-slate-900/15">
         <div className="mx-auto flex min-h-[4.5rem] max-w-app items-center justify-between gap-4 px-4 sm:px-6">
           <Link href="/admin" className="flex items-center gap-3 text-white">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-400 text-[#09213a] shadow-lg shadow-cyan-950/25"><ShieldCheck size={21} /></span>
+            <BrandMark size={40} className="shrink-0 text-white" />
             <span><span className="block text-base font-bold tracking-wide">POLREADY</span><span className="block text-[10px] font-semibold tracking-[0.2em] text-cyan-100/70">ADMIN COMMAND</span></span>
           </Link>
           <div className="flex items-center gap-2 sm:gap-3">
