@@ -2,37 +2,40 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Search, X, AlertCircle, Sparkles, Check } from 'lucide-react';
-import { subjects, totalQuestions } from '@/lib/subjects';
-import { topics, topicsBySubject } from '@/lib/topics';
-import { subjectStyles } from '@/lib/subjectStyles';
-import { getSubjectProgress, getTopicProgress, getWrongBySubject } from '@/lib/progress';
+import { ArrowRight, Search, X, AlertCircle, Sparkles, Check, Lock } from 'lucide-react';
+import { resolveSubjects } from '@/lib/subjectCatalog';
+import { getSubjectStyle, subjectStyles } from '@/lib/subjectStyles';
+import { useProgressStats } from '@/lib/useProgressStats';
+import { useMembershipStatus } from '@/lib/useMembershipStatus';
+import { useExamCatalog } from '@/lib/useExamCatalog';
 import PracticeFilter, { EMPTY_FILTER } from '@/components/PracticeFilter';
+import PublishedExamSetCard from '@/components/PublishedExamSetCard';
 import ResumeBanner from '@/components/ResumeBanner';
 
 const PASS_PCT = 60;
+// ต้องเป็น reference คงที่ กัน useMemo คำนวณใหม่ทุก render
+const EMPTY_TOPIC_COUNTS = {};
 
 function SubjectCard({ subject, progress }) {
-  const style = subjectStyles[subject.id];
+  const style = getSubjectStyle(subject.id, subject.shortName);
   const Icon = style.icon;
-  const subjectTopics = topicsBySubject(subject.id);
-
   const progressPct = progress?.progressPct ?? 0;
   const accuracyPct = progress?.accuracyPct ?? null;
 
   return (
     <Link
       href={`/practice/${subject.id}`}
-      className={`rounded-2xl p-6 text-white flex flex-col ${style.color} hover:opacity-95 transition-opacity`}
+      className={`rounded-2xl p-6 text-white flex flex-col shadow-[0_16px_40px_rgba(30,64,100,0.14)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_38px_rgba(30,64,100,0.24)] ${style.color}`}
     >
       <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center mb-4">
         <Icon size={20} />
       </div>
       <h3 className="text-lg font-semibold mb-1">{subject.name}</h3>
-      <p className="text-sm text-white/75 mb-4 leading-relaxed">{subject.description}</p>
-      <p className="text-xs text-white/70 mb-3">
-        {subjectTopics.length} ชุด · {subject.count} ข้อ
-      </p>
+      {/* คำอธิบายมาจากหลังบ้าน ถ้ายังไม่ได้กรอกก็เว้นไว้ ไม่เติมข้อความสมมติแทน */}
+      {subject.description && (
+        <p className="text-sm text-white/75 mb-4 leading-relaxed">{subject.description}</p>
+      )}
+      <p className="text-xs text-white/70 mb-3">เลือกหมวดเพื่อเริ่มทำแบบฝึกหัด</p>
 
       <div className="mt-auto">
         <div className="flex items-center justify-between text-xs text-white/70 mb-1">
@@ -55,14 +58,18 @@ function SubjectCard({ subject, progress }) {
   );
 }
 
-function SetCard({ topic, attempt }) {
-  const style = subjectStyles[topic.subjectId];
-  const subject = subjects.find((s) => s.id === topic.subjectId);
+// subject ส่งเข้ามาเป็น prop เพราะรายชื่อวิชามาจาก catalog ในคอมโพเนนต์หลัก
+function SetCard({ topic, subject, attempt, isMember, isLoggedIn, accessLoading }) {
+  const style = getSubjectStyle(topic.subjectId);
   const pct = attempt ? Math.round((attempt.score / attempt.total) * 100) : null;
   const passed = pct !== null && pct >= PASS_PCT;
+  // ต้องยึด is_free_practice จากฐานข้อมูลอย่างเดียว ให้ตรงกับด่านตรวจสิทธิ์ฝั่งเซิร์ฟเวอร์
+  // ไม่งั้นจะขึ้นป้าย "ทดลองฟรี" แล้วกดเข้าไปโดนปฏิเสธ
+  const isFreeTrial = Boolean(topic.isFreePractice);
+  const canStart = topic.available && !accessLoading && (isMember || (isFreeTrial && isLoggedIn));
 
   return (
-    <div className="border border-graylight/30 rounded-2xl overflow-hidden flex flex-col hover:shadow-md hover:border-accent-cyan/50 transition-all">
+    <div className="app-card app-card-hover overflow-hidden flex flex-col">
       {attempt ? (
         <div
           className={`flex items-center justify-between gap-2 px-4 py-2 text-xs font-medium text-white ${
@@ -82,20 +89,10 @@ function SetCard({ topic, attempt }) {
       )}
 
       <div className="p-5 flex-1 flex flex-col">
-        <span
-          className={`self-start text-[10px] font-medium px-2 py-0.5 rounded-full mb-3 ${style.chip}`}
-        >
-          {style.short}
-        </span>
+        <div className="flex flex-wrap items-center gap-1.5 mb-3"><span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${style.chip}`}>{style.short}</span>{topic.available && isFreeTrial && <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700"><Sparkles size={9} /> ทดลองฟรี</span>}{topic.available && !isFreeTrial && !isMember && !accessLoading && <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700"><Lock size={9} /> สมาชิก</span>}</div>
         <h3 className="font-medium text-graydark leading-snug mb-1">{topic.name}</h3>
-        <p className="text-xs text-graydark/50 mb-1">วิชา: {subject?.name}</p>
-        <p className="text-xs text-graydark/40 mb-4">{topic.questionCount} ข้อ</p>
-        <Link
-          href={`/exam/${topic.subjectId}?topic=${topic.id}`}
-          className="mt-auto block text-center text-sm bg-navy text-white rounded-xl py-2.5 font-medium hover:opacity-90"
-        >
-          {attempt ? 'ทำอีกครั้ง' : 'ทำข้อสอบ'}
-        </Link>
+        <p className="text-xs text-graydark/50 mb-4">วิชา: {subject?.name}</p>
+        {!topic.available ? <span className="mt-auto block text-center text-sm bg-graylight/15 text-graydark/40 rounded-xl py-2.5 font-medium">ยังไม่เปิดให้ทำ</span> : canStart ? <Link href={`/exam/${topic.subjectId}?topic=${topic.id}`} className="mt-auto block text-center text-sm bg-navy text-white rounded-xl py-2.5 font-medium hover:opacity-90">{attempt ? 'ทำอีกครั้ง' : 'ทำข้อสอบ'}</Link> : accessLoading ? <span className="mt-auto block text-center text-sm bg-graylight/15 text-graydark/40 rounded-xl py-2.5 font-medium">กำลังตรวจสอบสิทธิ์</span> : <Link href={isLoggedIn ? '/account' : '/login'} className="mt-auto flex items-center justify-center gap-1.5 text-center text-sm border border-amber-300 text-amber-700 rounded-xl py-2.5 font-medium hover:bg-amber-50"><Lock size={14} />{isLoggedIn ? 'ปลดล็อกสมาชิก' : isFreeTrial ? 'เข้าสู่ระบบเพื่อทดลอง' : 'เข้าสู่ระบบ'}</Link>}
       </div>
     </div>
   );
@@ -104,18 +101,58 @@ function SetCard({ topic, attempt }) {
 export default function PracticePage() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState(EMPTY_FILTER);
-  const [stats, setStats] = useState(null);
+  const { loading: accessLoading, isLoggedIn, isMember } = useMembershipStatus();
+  const { data: examCatalog, loading: catalogLoading } = useExamCatalog('practice');
+  const publishedSets = examCatalog?.sets || [];
+  const topicQuestionCounts = examCatalog?.topicQuestionCounts || EMPTY_TOPIC_COUNTS;
+  // ชื่อ/คำอธิบายวิชามาจากฐานข้อมูลเท่านั้น แอดมินแก้แล้วต้องเห็นผลทันที
+  // และวิชาที่ถูกลบต้องหายจากหน้านี้ด้วย
+  const subjects = useMemo(() => resolveSubjects(examCatalog?.subjects), [examCatalog]);
+  // ใช้หมวดย่อยจากฐานข้อมูลเท่านั้น ไม่ fallback ไปรายการ hardcode เดิม
+  // ไม่งั้นตอนคลังว่างจะขึ้นการ์ดหลอกที่กดทำไม่ได้
+  const catalogTopics = useMemo(() => (examCatalog?.topics || []).map((topic) => {
+    const id = topic.legacy_id || topic.id;
+    return {
+      id,
+      rowId: topic.id,
+      parentId: topic.parent_id || '',
+      subjectId: topic.subject_id,
+      name: topic.name,
+      description: topic.description || 'แบบฝึกหัดตามหัวข้อที่ผู้ดูแลกำหนด',
+      questionCount: topicQuestionCounts[id] || 0,
+      available: (topicQuestionCounts[id] || 0) > 0,
+      isFreePractice: Boolean(topic.is_free_practice),
+    };
+  }), [examCatalog, topicQuestionCounts]);
 
-  // อ่าน localStorage หลัง mount เท่านั้น เพื่อไม่ให้ markup ตอน SSR กับตอน hydrate ต่างกัน
-  useEffect(() => {
+  // สถิติทั้งหมดมาจาก exam_attempts ในฐานข้อมูล (ผ่าน /api/stats) ไม่ใช่ localStorage
+  const { loading: progressLoading, stats: dbStats, topicProgress } = useProgressStats();
+  const stats = useMemo(() => {
+    if (progressLoading) return null;
+
+    // ความก้าวหน้ารายวิชา = จำนวนหัวข้อที่เคยทำ เทียบกับหัวข้อทั้งหมดของวิชานั้น
     const subjectProgress = {};
-    for (const s of subjects) subjectProgress[s.id] = getSubjectProgress(s.id, topicsBySubject(s.id));
+    for (const subject of subjects) {
+      const topicsOfSubject = catalogTopics.filter((topic) => topic.subjectId === subject.id);
+      const attempted = topicsOfSubject.filter((topic) => topicProgress[topic.id]).length;
+      const bySubject = (dbStats?.subjectStats || []).find((item) => item.id === subject.id);
+      subjectProgress[subject.id] = {
+        progressPct: topicsOfSubject.length ? Math.round((attempted / topicsOfSubject.length) * 100) : 0,
+        accuracyPct: bySubject?.pct ?? null,
+      };
+    }
 
-    const topicAttempts = {};
-    for (const t of topics) topicAttempts[t.id] = getTopicProgress(t.id);
+    const wrongBySubject = (dbStats?.subjectStats || [])
+      .filter((item) => item.pct !== null && item.answered > item.correct)
+      .map((item) => ({
+        subjectId: item.id,
+        wrong: item.answered - item.correct,
+        wrongPct: item.answered ? Math.round(((item.answered - item.correct) / item.answered) * 100) : 0,
+      }))
+      .sort((a, b) => b.wrong - a.wrong);
 
-    setStats({ subjectProgress, topicAttempts, wrongBySubject: getWrongBySubject() });
-  }, []);
+    return { subjectProgress, topicAttempts: topicProgress, wrongBySubject };
+  }, [progressLoading, dbStats, topicProgress, catalogTopics, subjects]);
 
   const q = query.trim().toLowerCase();
 
@@ -124,16 +161,18 @@ export default function PracticePage() {
 
   const visibleSets = useMemo(() => {
     if (!showingSets) return [];
-    return topics.filter((t) => {
-      if (!filter.topics.includes(t.id)) return false;
-      if (q && !`${t.name} ${t.description}`.toLowerCase().includes(q)) return false;
-      if (!stats) return true;
-      const done = Boolean(stats.topicAttempts[t.id]);
-      if (filter.status === 'done' && !done) return false;
-      if (filter.status === 'undone' && done) return false;
-      return true;
-    });
-  }, [showingSets, filter, q, stats]);
+    return catalogTopics
+      .filter((t) => {
+        if (!filter.topics.includes(t.id)) return false;
+        if (q && !`${t.name} ${t.description}`.toLowerCase().includes(q)) return false;
+        if (!stats) return true;
+        const done = Boolean(stats.topicAttempts[t.id]);
+        if (filter.status === 'done' && !done) return false;
+        if (filter.status === 'undone' && done) return false;
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'th'));
+  }, [showingSets, filter, q, stats, catalogTopics]);
 
   const visibleSubjects = useMemo(() => {
     return subjects.filter((s) => {
@@ -147,22 +186,23 @@ export default function PracticePage() {
 
       if (!q) return true;
       const short = subjectStyles[s.id]?.short ?? '';
-      const setNames = topicsBySubject(s.id)
+      const setNames = catalogTopics
+        .filter((t) => t.subjectId === s.id)
         .map((t) => `${t.name} ${t.description}`)
         .join(' ');
       return `${s.name} ${s.description} ${short} ${setNames}`.toLowerCase().includes(q);
     });
-  }, [filter, q, stats]);
+  }, [filter, q, stats, catalogTopics, subjects]);
 
-  const attemptedTopics = stats ? topics.filter((t) => stats.topicAttempts[t.id]).length : 0;
-  const overallPct = topics.length ? Math.round((attemptedTopics / topics.length) * 100) : 0;
+  const attemptedTopics = stats ? catalogTopics.filter((t) => stats.topicAttempts[t.id]).length : 0;
+  const overallPct = catalogTopics.length ? Math.round((attemptedTopics / catalogTopics.length) * 100) : 0;
   const filterActive =
     filter.subjects.length > 0 || filter.topics.length > 0 || filter.status !== 'all';
   const isFiltering = filterActive || q !== '';
 
   const recommended = useMemo(() => {
     if (!stats) return [];
-    const available = topics.filter((t) => t.available);
+    const available = catalogTopics.filter((t) => t.available);
     const untouched = available.filter((t) => !stats.topicAttempts[t.id]);
     if (untouched.length > 0) return untouched.slice(0, 8);
     return [...available]
@@ -172,7 +212,7 @@ export default function PracticePage() {
         return ra.score / ra.total - rb.score / rb.total;
       })
       .slice(0, 8);
-  }, [stats]);
+  }, [stats, catalogTopics]);
 
   return (
     <div>
@@ -180,11 +220,11 @@ export default function PracticePage() {
         <div>
           <h1 className="text-2xl font-semibold text-navy mb-1">แบบฝึกหัดรายวิชา</h1>
           <p className="text-graydark/60">
-            เลือกวิชาเพื่อเริ่มทำข้อสอบและพัฒนาคะแนนของคุณ · รวม {totalQuestions} ข้อ
+            เลือกวิชาและหมวดที่ต้องการฝึกเพื่อพัฒนาคะแนนของคุณ
           </p>
         </div>
 
-        <div className="border border-graylight/30 rounded-2xl p-5 min-w-[240px]">
+        <div className="app-card p-5 min-w-[240px]">
           <p className="text-xs text-graydark/50 mb-2">ความก้าวหน้ารวม</p>
           <div className="flex items-center gap-3 mb-3">
             <p className="text-3xl font-bold text-navy">{stats ? `${overallPct}%` : '—'}</p>
@@ -202,10 +242,12 @@ export default function PracticePage() {
             />
           </div>
           <p className="text-[11px] text-graydark/40 mt-2">
-            ทำแล้ว {attemptedTopics} จาก {topics.length} ชุด
+            ทำแล้ว {attemptedTopics} จาก {catalogTopics.length} ชุด
           </p>
         </div>
       </div>
+
+      {!accessLoading && !isMember && <section className="mb-5 flex flex-col gap-3 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/90 to-cyan-50/70 p-4 shadow-[0_10px_24px_rgba(79,134,247,0.08)] sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-accent-cyan shadow-sm"><Sparkles size={17} /></span><div><p className="text-sm font-semibold text-navy">ทดลองใช้ฟรี 6 ชุด · วิชาละ 1 ชุด</p><p className="mt-0.5 text-xs leading-5 text-graydark/60">มองหาป้าย “ทดลองฟรี” แล้วเข้าสู่ระบบด้วย OTP เพื่อเริ่มทำ ส่วนชุดอื่นเปิดสำหรับสมาชิก</p></div></div><Link href={isLoggedIn ? '/account' : '/login'} className="btn-navy shrink-0">{isLoggedIn ? 'ดูสมาชิก' : 'เข้าสู่ระบบ'}</Link></section>}
 
       <div className="flex items-stretch gap-3 mb-4">
         <div className="relative flex-1">
@@ -230,7 +272,7 @@ export default function PracticePage() {
           )}
         </div>
 
-        <PracticeFilter value={filter} onChange={setFilter} />
+        <PracticeFilter value={filter} onChange={setFilter} topicItems={catalogTopics} subjectItems={subjects} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-8">
@@ -254,7 +296,7 @@ export default function PracticePage() {
                 : 'border-graylight/30 text-graydark hover:border-accent-cyan/50'
             }`}
           >
-            {subjectStyles[s.id].short}
+            {getSubjectStyle(s.id, s.shortName).short}
           </button>
         ))}
         {isFiltering && (
@@ -272,6 +314,15 @@ export default function PracticePage() {
       </div>
 
       <ResumeBanner />
+
+      {!catalogLoading && publishedSets.length > 0 && (
+        <section className="mb-10">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-2"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-accent-cyan">คลังข้อสอบจริง</p><h2 className="mt-1 text-lg font-bold text-navy">ชุดข้อสอบที่แอดมินเผยแพร่</h2><p className="mt-1 text-sm text-graydark/55">รายการนี้อัปเดตจากหลังบ้านโดยตรง</p></div><span className="rounded-full bg-cyan-50 px-3 py-1.5 text-xs font-bold text-cyan-700">{publishedSets.length} ชุด</span></div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {publishedSets.map((set) => <PublishedExamSetCard key={set.id} set={set} isLoggedIn={isLoggedIn} />)}
+          </div>
+        </section>
+      )}
 
       {stats && stats.wrongBySubject.length > 0 && !showingSets && (
         <section className="border border-red-200 bg-red-50/40 rounded-2xl p-6 mb-8">
@@ -321,7 +372,7 @@ export default function PracticePage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {visibleSets.map((t) => (
-                <SetCard key={t.id} topic={t} attempt={stats?.topicAttempts[t.id] ?? null} />
+                <SetCard key={t.id} topic={t} subject={subjects.find((s) => s.id === t.subjectId)} attempt={stats?.topicAttempts[t.id] ?? null} isMember={isMember} isLoggedIn={isLoggedIn} accessLoading={accessLoading} />
               ))}
             </div>
           )}
@@ -364,7 +415,9 @@ export default function PracticePage() {
 
           <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
             {recommended.map((t) => {
-              const style = subjectStyles[t.subjectId];
+              const style = getSubjectStyle(t.subjectId);
+              const isFreeTrial = Boolean(t.isFreePractice);
+              const canStart = !accessLoading && (isMember || (isFreeTrial && isLoggedIn));
               return (
                 <div
                   key={t.id}
@@ -375,14 +428,9 @@ export default function PracticePage() {
                   >
                     {style.short}
                   </span>
-                  <p className="text-sm font-medium text-graydark leading-snug mb-1">{t.name}</p>
-                  <p className="text-[11px] text-graydark/40 mb-3">{t.questionCount} ข้อ</p>
-                  <Link
-                    href={`/exam/${t.subjectId}?topic=${t.id}`}
-                    className="mt-auto text-center text-xs bg-navy text-white rounded-lg py-2 font-medium hover:opacity-90"
-                  >
-                    เริ่มทำ
-                  </Link>
+                  {isFreeTrial && <span className="self-start -mt-1 text-[10px] font-medium text-emerald-600">ทดลองฟรี</span>}
+                  <p className="text-sm font-medium text-graydark leading-snug mb-3">{t.name}</p>
+                  <Link href={canStart ? `/exam/${t.subjectId}?topic=${t.id}` : isLoggedIn ? '/account' : '/login'} className={`mt-auto text-center text-xs rounded-lg py-2 font-medium ${canStart ? 'bg-navy text-white hover:opacity-90' : 'border border-amber-300 text-amber-700 hover:bg-amber-50'}`}>{canStart ? 'เริ่มทำ' : isLoggedIn ? 'ปลดล็อก' : 'เข้าสู่ระบบ'}</Link>
                 </div>
               );
             })}

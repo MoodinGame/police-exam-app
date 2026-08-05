@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { PauseCircle, Trash2 } from 'lucide-react';
 import { getSession, clearSession } from '@/lib/examSession';
+import { confirmDiscardSession } from '@/lib/sweetAlert';
 
 function formatSavedAt(iso) {
   try {
@@ -50,8 +51,8 @@ export default function ResumeBanner() {
 
         <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => {
-              if (window.confirm('ทิ้งข้อสอบที่พักไว้ ความคืบหน้าจะหายทั้งหมด ยืนยันหรือไม่?')) {
+            onClick={async () => {
+              if (await confirmDiscardSession()) {
                 clearSession();
                 setSession(null);
               }

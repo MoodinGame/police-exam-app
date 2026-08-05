@@ -1,7 +1,302 @@
+:root{
+  --font-family:var(--font-prompt),sans-serif;
+  --color-primary:#4F86F7; --color-primary-soft:#EAF1FF;
+  --color-secondary:#67C6B3; --color-secondary-soft:#E8F8F4;
+  --color-accent:#F5C76A;
+  --color-background:#F7FAFC; --color-surface:#FFFFFF;
+  --color-heading:#17345B; --color-text:#62748A; --color-border:#E4ECF4;
+  --color-success:#35B98B; --color-danger:#EF6A6A;
+  --radius-sm:12px; --radius-md:20px; --radius-lg:28px;
+  --shadow-sm:0 6px 22px rgba(30,64,100,.08);
+  --shadow-md:0 16px 44px rgba(30,64,100,.13);
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-6:24px;--space-8:32px;--space-12:48px;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
-  @apply bg-white text-graydark font-prompt;
+  @apply bg-[#F7FAFC] text-graydark font-prompt antialiased;
+  font-weight: 300;
+  line-height: 1.65;
+  background-image:
+    radial-gradient(circle at 4% 0%, rgba(79,134,247,.07), transparent 26rem),
+    radial-gradient(circle at 96% 10%, rgba(103,198,179,.08), transparent 25rem);
+}
+
+/* ห้ามบังคับสีหัวข้อตรงนี้ เพราะหัวข้อที่อยู่บนการ์ดสีเข้มสืบทอดสีขาวมาจาก parent
+   ถ้าใส่ text-navy จะทับจนหัวข้อจมหายไปกับพื้นหลัง — ให้แต่ละหน้ากำหนดสีเอง */
+h1,h2,h3,h4 { color: inherit; font-weight: 600; line-height: 1.3; }
+h1 { font-size: clamp(1.35rem, 1.05rem + 1.4vw, 2rem); }
+h2 { font-size: clamp(1.1rem, .95rem + .8vw, 1.5rem); }
+img, svg, video { max-width: 100%; height: auto; }
+
+/* โฟกัสต้องเห็นชัดสำหรับผู้ใช้คีย์บอร์ด */
+:where(a,button,input,select,textarea,[tabindex]):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::selection {
+  background: rgba(79, 134, 247, 0.18);
+  color: #17345B;
+}
+
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.no-copy {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* ช่องกรอกต้องเลือก/แก้ข้อความได้ตามปกติ ไม่งั้นค้นหาหรือแก้คำที่พิมพ์ผิดไม่ได้
+   (บางเบราว์เซอร์สืบทอด user-select: none ลงไปถึง input ด้วย) */
+.no-copy input,
+.no-copy textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+@layer components {
+  .app-main {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 92% 4%, rgba(79,134,247,.08), transparent 21rem),
+      radial-gradient(circle at 8% 88%, rgba(103,198,179,.09), transparent 24rem),
+      linear-gradient(180deg, #FBFDFF 0%, #F7FAFC 55%, #F6FBFA 100%);
+  }
+
+  .app-main::before,
+  .app-main::after {
+    content: '';
+    position: absolute;
+    z-index: 0;
+    border-radius: 9999px;
+    filter: blur(4px);
+    pointer-events: none;
+  }
+
+  .app-main::before {
+    width: 18rem;
+    height: 18rem;
+    top: 22%;
+    right: -13rem;
+    background: rgba(79,134,247,.05);
+  }
+
+  .app-main::after {
+    width: 15rem;
+    height: 15rem;
+    bottom: 6%;
+    left: -11rem;
+    background: rgba(103,198,179,.06);
+  }
+
+  .app-card {
+    @apply min-w-0 rounded-3xl border border-line/70 bg-surface;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .app-card-hover {
+    @apply transition duration-200 ease-out hover:-translate-y-1 hover:border-accent-cyan/45;
+    will-change: transform, box-shadow;
+  }
+
+  .app-card-hover:hover { box-shadow: var(--shadow-md); }
+
+  .app-section-heading {
+    @apply relative pl-3 before:absolute before:inset-y-1 before:left-0 before:w-1 before:rounded-full before:bg-gradient-to-b before:from-accent-cyan before:to-accent-teal;
+  }
+
+  /* ปุ่มรอง / โครงร่าง ใช้ซ้ำได้ทั้งระบบ */
+  .btn-outline {
+    @apply inline-flex min-h-[46px] items-center justify-center gap-2 rounded-2xl border border-line bg-surface px-5 py-2.5 text-sm font-medium text-navy transition duration-200 hover:border-accent-cyan/50 hover:bg-accent-cyan/5 disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex min-h-[46px] items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium text-graydark transition duration-200 hover:bg-accent-cyan/10 hover:text-navy;
+  }
+
+  .btn-danger {
+    @apply inline-flex min-h-[46px] items-center justify-center gap-2 rounded-2xl bg-danger px-5 py-2.5 text-sm font-medium text-white transition duration-200 hover:brightness-105 disabled:opacity-50;
+  }
+
+  /* ฟอร์ม: ขอบมน 12px โฟกัสชัด ไม่ล้น container */
+  .field {
+    @apply w-full min-w-0 rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-navy outline-none transition duration-200;
+    @apply placeholder:text-graylight focus:border-accent-cyan focus:ring-4 focus:ring-accent-cyan/20;
+  }
+
+  .field-error { @apply border-danger focus:border-danger focus:ring-danger/20; }
+
+  /* โครงกระดูกตอนโหลดข้อมูล */
+  .skeleton { @apply animate-pulse rounded-2xl bg-slate-200/60; }
+
+  .btn-primary {
+    @apply inline-flex min-h-[46px] items-center justify-center gap-2 rounded-2xl bg-accent-cyan px-5 py-2.5 text-sm font-medium text-white transition duration-200 hover:brightness-[1.06] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
+    box-shadow: 0 10px 24px rgba(79,134,247,.28);
+  }
+
+  .btn-navy {
+    @apply inline-flex min-h-[46px] items-center justify-center gap-2 rounded-2xl bg-navy px-5 py-2.5 text-sm font-medium text-white transition duration-200 hover:bg-[#1e4272] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
+    box-shadow: 0 10px 24px rgba(23,52,91,.2);
+  }
+
+  .animate-enter {
+    animation: enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .animate-float {
+    animation: float 4.5s ease-in-out infinite;
+  }
+}
+
+.swal-action-confirm,
+.swal-action-cancel {
+  border: 0;
+  border-radius: 0.85rem;
+  padding: 0.75rem 1.05rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.swal-action-confirm {
+  background: linear-gradient(135deg, #202b52, #343b67);
+  box-shadow: 0 8px 18px rgba(32, 43, 82, 0.22);
+  color: white;
+}
+
+.swal-action-confirm:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(32, 43, 82, 0.3);
+}
+
+.swal-action-cancel {
+  background: #f1f4f8;
+  color: #526075;
+}
+
+.swal-action-cancel:hover {
+  background: #e6ebf2;
+}
+
+.swal-update-list {
+  display: grid;
+  gap: 0.7rem;
+  text-align: left;
+}
+
+.swal-update-popup {
+  overflow: hidden;
+  border-color: rgba(125, 211, 252, 0.7);
+  background:
+    radial-gradient(circle at 96% 0%, rgba(34, 211, 238, 0.18), transparent 33%),
+    radial-gradient(circle at 0% 100%, rgba(99, 102, 241, 0.14), transparent 36%),
+    linear-gradient(145deg, #ffffff 8%, #f2faff 56%, #f5f3ff 100%);
+}
+
+.swal-update-title {
+  background: linear-gradient(100deg, #172856 5%, #166f9a 52%, #2563eb 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.swal-update-item {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  border-radius: 0.9rem;
+  padding: 0.8rem;
+}
+
+.swal-update-item-ready {
+  border: 1px solid rgba(74, 222, 128, 0.46);
+  background: linear-gradient(120deg, rgba(240, 253, 244, 0.95), rgba(236, 253, 245, 0.78));
+}
+
+.swal-update-item-progress {
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: linear-gradient(120deg, rgba(240, 249, 255, 0.96), rgba(238, 242, 255, 0.88));
+}
+
+.swal-update-icon {
+  display: inline-flex;
+  height: 1.5rem;
+  width: 1.5rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.swal-update-item-ready .swal-update-icon {
+  background: #22c55e;
+  color: white;
+}
+
+.swal-update-item-progress .swal-update-icon {
+  background: #0ea5e9;
+  color: white;
+}
+
+.swal-update-item strong {
+  display: block;
+  color: #202b52;
+}
+
+.swal-update-item p {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.swal-update-note {
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 0.75rem;
+  background: linear-gradient(115deg, #fff8e8, #fff1d2);
+  padding: 0.65rem 0.8rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: #806120;
+}
+
+.swal-update-confirm {
+  background: linear-gradient(115deg, #00b4d8 0%, #2563eb 52%, #4338ca 100%);
+  box-shadow: 0 9px 20px rgba(37, 99, 235, 0.28);
+}
+
+.swal-update-confirm:hover {
+  box-shadow: 0 13px 25px rgba(37, 99, 235, 0.34);
+}
+
+@keyframes enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
