@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import {
   AUTH_SESSION_COOKIE,
+  AUTH_SESSION_TTL_SECONDS,
   createSession,
   isChallengeExpired,
   isOtpCorrect,
@@ -10,6 +11,7 @@ import {
   OTP_MAX_VERIFY_ATTEMPTS,
   OTP_TTL_SECONDS,
   parseChallenge,
+  persistentCookieOptions,
   secureCookieOptions,
   serializeChallenge,
 } from '@/lib/otpServer';
@@ -74,11 +76,16 @@ export async function POST(request) {
     return NextResponse.json({ error: 'เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง' }, { status: 503 });
   }
 
-  store.delete(OTP_CHALLENGE_COOKIE);
-  store.set(AUTH_SESSION_COOKIE, createSession(challenge.phone, sessionId), {
+  // Attach the cookies to the response explicitly. This makes the session a
+  // persistent browser cookie (including mobile webviews), instead of relying
+  // on request-scoped cookie mutation being carried into a separate response.
+  const response = NextResponse.json({ success: true, phone: challenge.phone });
+  response.cookies.set(AUTH_SESSION_COOKIE, createSession(challenge.phone, sessionId), persistentCookieOptions(AUTH_SESSION_TTL_SECONDS));
+  response.cookies.set(OTP_CHALLENGE_COOKIE, '', {
     ...secureCookieOptions,
-    maxAge: 365 * 24 * 60 * 60,
+    maxAge: 0,
+    expires: new Date(0),
   });
 
-  return NextResponse.json({ success: true, phone: challenge.phone });
+  return response;
 }
