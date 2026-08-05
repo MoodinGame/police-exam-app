@@ -24,7 +24,9 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/membership';
 import { getPublicPlans } from '@/lib/serverAccess';
+import { requireCurrentUser } from '@/lib/serverUser';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { redirect } from 'next/navigation';
 import Reveal from '@/components/Reveal';
 import OnlineStatusBadge from '@/components/OnlineStatusBadge';
 import { BrandLogo, BrandMark } from '@/components/BrandLogo';
@@ -81,6 +83,17 @@ function planPriceSuffix(plan) {
 }
 
 export default async function HomePage() {
+  // Opening the app starts with a server-side session check. A valid member
+  // returns to their workspace; guests continue to the public landing page.
+  let hasActiveSession = false;
+  try {
+    await requireCurrentUser();
+    hasActiveSession = true;
+  } catch {
+    // The landing page remains available when the visitor is signed out.
+  }
+  if (hasActiveSession) redirect('/dashboard');
+
   const plans = await getMembershipPlans();
 
   return (
