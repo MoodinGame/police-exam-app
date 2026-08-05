@@ -40,6 +40,27 @@ export default function AuthCard({ mode }) {
   const [resendIn, setResendIn] = useState(0);
   const [devCode, setDevCode] = useState('');
 
+  // A browser can restore its last route as /login after being reopened even
+  // though its persistent session cookie is still valid. Send an already
+  // authenticated visitor back to the workspace instead of making them think
+  // they need to request another OTP.
+  useEffect(() => {
+    if (oustedByOtherDevice || accountSuspended) return undefined;
+
+    let active = true;
+    async function restoreExistingSession() {
+      try {
+        const response = await fetch('/api/membership', { cache: 'no-store' });
+        if (active && response.ok) router.replace('/dashboard');
+      } catch {
+        // Keep the sign-in form available if the session check cannot run.
+      }
+    }
+
+    restoreExistingSession();
+    return () => { active = false; };
+  }, [accountSuspended, oustedByOtherDevice, router]);
+
   useEffect(() => {
     if (resendIn <= 0) return undefined;
     const timer = window.setInterval(() => setResendIn((seconds) => Math.max(0, seconds - 1)), 1000);
