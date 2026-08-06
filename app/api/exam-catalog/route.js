@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { canAccessExamSet, getUserAccess } from '@/lib/serverAccess';
+import { canAccessExamSet, getFreePracticeTopicKeys, getUserAccess } from '@/lib/serverAccess';
 import { findUserByPhone, getSessionPhone } from '@/lib/serverUser';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
@@ -124,6 +124,19 @@ export async function GET(request) {
 
       nestedTopics = allTopics.filter(usable);
     }
+
+    // Expose the same effective trial-topic rule used by the protected APIs.
+    // This includes database flags and the legacy trial topic IDs.
+    const freePracticeKeys = await getFreePracticeTopicKeys(
+      supabase,
+      nestedTopics.flatMap((topic) => [topic.id, topic.legacy_id].filter(Boolean)),
+    );
+    nestedTopics = nestedTopics.map((topic) => ({
+      ...topic,
+      is_free_practice: Boolean(topic.is_free_practice)
+        || freePracticeKeys.has(String(topic.id))
+        || (topic.legacy_id ? freePracticeKeys.has(String(topic.legacy_id)) : false),
+    }));
 
     // แปลง topic_id (uuid) เป็น legacy_id เองจากรายการหัวข้อที่ดึงมาแล้ว แทนการ join ตอน query
     // ช่วยลดขนาดข้อมูลที่ต้องดึงข้ามหน้า และให้คีย์ตรงกับที่หน้าบ้านใช้อ้างอิงหัวข้อ
