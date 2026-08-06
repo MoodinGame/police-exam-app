@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { LogIn, LockKeyhole } from 'lucide-react';
-import { canUseArea, getUserAccess, isFreePracticeTopicId } from '@/lib/serverAccess';
+import { canAccessExamSet, canUseArea, getUserAccess, isFreePracticeTopicId } from '@/lib/serverAccess';
 import { requireCurrentUser } from '@/lib/serverUser';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import ExamClient from './ExamClient';
@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function ExamPage({ searchParams }) {
   const topicKey = searchParams?.topic || null;
-  const hasDirectSet = Boolean(searchParams?.set);
+  const setSlug = typeof searchParams?.set === 'string' ? searchParams.set.trim() : '';
 
   try {
     const user = await requireCurrentUser();
@@ -17,14 +17,25 @@ export default async function ExamPage({ searchParams }) {
 
     // เช็คสถานะสมาชิกและ flag ชุดฟรีพร้อมกัน — flag อ่านจาก DB ที่แอดมินตั้งไว้
     // ไม่ใช่รายการที่ hardcode ไว้ ไม่งั้นหัวข้อที่แอดมินเพิ่งติ๊กว่าฟรีจะยังโดนบล็อก
-    const [access, isFreeTrial] = await Promise.all([
+    const [access, isFreeTrial, directSetResult] = await Promise.all([
       getUserAccess(supabase, user.id),
       topicKey ? isFreePracticeTopicId(supabase, topicKey) : Promise.resolve(false),
+      setSlug
+        ? supabase
+          .from('exam_sets')
+          .select('id, bank, is_free, status')
+          .eq('slug', setSlug)
+          .eq('bank', 'practice')
+          .eq('status', 'published')
+          .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
     ]);
+    if (directSetResult.error) throw directSetResult.error;
     const isMember = canUseArea(access, 'practice');
+    const hasDirectSetAccess = Boolean(directSetResult.data && canAccessExamSet(access, directSetResult.data));
 
     // เปิดทั้งวิชาโดยไม่ระบุหัวข้อ/ชุด จะเห็นข้อสอบหลายชุดพร้อมกัน จึงยังจำกัดเฉพาะสมาชิก
-    if (!isMember && !isFreeTrial && !hasDirectSet) return <MembershipRequired />;
+    if (!isMember && !isFreeTrial && !hasDirectSetAccess) return <MembershipRequired />;
     return <ExamClient />;
   } catch (error) {
     if (error?.status === 401) return <LoginRequired />;

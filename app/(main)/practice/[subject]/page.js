@@ -20,8 +20,8 @@ function SetCard({ topic, attempt, isMember, isLoggedIn, accessLoading, database
   const style = getSubjectStyle(topic.subjectId);
   const pct = attempt ? Math.round((attempt.score / attempt.total) * 100) : null;
   const passed = pct !== null && pct >= PASS_PCT;
-  // ต้องยึด is_free_practice จากฐานข้อมูลอย่างเดียว ให้ตรงกับด่านตรวจสิทธิ์ฝั่งเซิร์ฟเวอร์
-  // ไม่งั้นจะขึ้นป้าย "ทดลองฟรี" แล้วกดเข้าไปโดนปฏิเสธ
+  // API ส่งสถานะทดลองใช้ฟรีตามกติกาสิทธิ์เดียวกับฝั่งเซิร์ฟเวอร์
+  // จึงครอบคลุมทั้ง flag ในฐานข้อมูลและหัวข้อทดลองใช้เดิม
   const isFreeTrial = Boolean(topic.isFreePractice);
   const hasDatabaseQuestions = Number.isFinite(databaseQuestionCount) && databaseQuestionCount > 0;
   const questionCount = hasDatabaseQuestions ? databaseQuestionCount : topic.questionCount;

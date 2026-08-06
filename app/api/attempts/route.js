@@ -101,9 +101,10 @@ export async function POST(request) {
       // เช็คสิทธิ์ตอนส่งคำตอบให้ตรงกับตอนเข้าทำ — อ่าน flag ชุดฟรีจาก DB เหมือนกัน
       const topicKeys = (questions || []).map((question) => question.content_topics?.legacy_id || question.topic_id);
       const freeTopicKeys = await getFreePracticeTopicKeys(supabase, topicKeys);
-      const onlyFreePracticeQuestions = bank !== 'mock'
+      const isFreeRandomQuizAttempt = bank === 'random' && questionIds.length <= 3;
+      const onlyFreePracticeQuestions = isFreeRandomQuizAttempt || (bank === 'practice'
         && topicKeys.length > 0
-        && topicKeys.every((key) => key && freeTopicKeys.has(key));
+        && topicKeys.every((key) => key && freeTopicKeys.has(key)));
       if (!onlyFreePracticeQuestions) throw requestError('ชุดข้อสอบนี้สำหรับสมาชิก', 403);
     }
 
