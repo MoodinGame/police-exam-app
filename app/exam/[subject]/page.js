@@ -8,8 +8,11 @@ import ExamClient from './ExamClient';
 export const dynamic = 'force-dynamic';
 
 export default async function ExamPage({ searchParams }) {
-  const topicKey = searchParams?.topic || null;
-  const setSlug = typeof searchParams?.set === 'string' ? searchParams.set.trim() : '';
+  // Next.js passes searchParams as a promise in current App Router releases.
+  // Awaiting also remains safe when a plain object is supplied in development.
+  const resolvedSearchParams = await searchParams;
+  const topicKey = resolvedSearchParams?.topic || null;
+  const setSlug = typeof resolvedSearchParams?.set === 'string' ? resolvedSearchParams.set.trim() : '';
 
   try {
     const user = await requireCurrentUser();
